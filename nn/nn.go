@@ -1,0 +1,221 @@
+// Copyright 2025 Born ML Framework. All rights reserved.
+// Use of this source code is governed by an Apache 2.0
+// license that can be found in the LICENSE file.
+
+package nn
+
+import (
+	"github.com/born-ml/born/internal/nn"
+	"github.com/born-ml/born/internal/tensor"
+)
+
+// Module interface defines the common interface for all neural network modules.
+type Module[B tensor.Backend] = nn.Module[B]
+
+// Parameter represents a trainable parameter in a neural network.
+type Parameter[B tensor.Backend] = nn.Parameter[B]
+
+// NewParameter creates a new parameter with the given name and tensor.
+func NewParameter[B tensor.Backend](name string, t *tensor.Tensor[float32, B]) *Parameter[B] {
+	return nn.NewParameter(name, t)
+}
+
+// Layers
+
+// Linear represents a fully connected (dense) layer.
+type Linear[B tensor.Backend] = nn.Linear[B]
+
+// NewLinear creates a new linear layer with Xavier initialization.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	layer := nn.NewLinear(784, 128, backend)
+func NewLinear[B tensor.Backend](inFeatures, outFeatures int, backend B) *Linear[B] {
+	return nn.NewLinear(inFeatures, outFeatures, backend)
+}
+
+// Conv2D represents a 2D convolutional layer.
+type Conv2D[B tensor.Backend] = nn.Conv2D[B]
+
+// NewConv2D creates a new 2D convolutional layer.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	conv := nn.NewConv2D(1, 32, 3, 3, 1, 1, true, backend)  // in_channels=1, out_channels=32, kernel=3x3, stride=1, padding=1, useBias=true
+func NewConv2D[B tensor.Backend](
+	inChannels, outChannels int,
+	kernelH, kernelW int,
+	stride, padding int,
+	useBias bool,
+	backend B,
+) *Conv2D[B] {
+	return nn.NewConv2D(inChannels, outChannels, kernelH, kernelW, stride, padding, useBias, backend)
+}
+
+// MaxPool2D represents a 2D max pooling layer.
+type MaxPool2D[B tensor.Backend] = nn.MaxPool2D[B]
+
+// NewMaxPool2D creates a new 2D max pooling layer.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	pool := nn.NewMaxPool2D(2, 2, backend)  // kernel=2, stride=2
+func NewMaxPool2D[B tensor.Backend](kernelSize, stride int, backend B) *MaxPool2D[B] {
+	return nn.NewMaxPool2D(kernelSize, stride, backend)
+}
+
+// Activations
+
+// ReLU represents the Rectified Linear Unit activation function.
+type ReLU[B tensor.Backend] = nn.ReLU[B]
+
+// NewReLU creates a new ReLU activation layer.
+//
+// Example:
+//
+//	relu := nn.NewReLU()
+func NewReLU[B tensor.Backend]() *ReLU[B] {
+	return nn.NewReLU[B]()
+}
+
+// Sigmoid represents the Sigmoid activation function.
+type Sigmoid[B tensor.Backend] = nn.Sigmoid[B]
+
+// NewSigmoid creates a new Sigmoid activation layer.
+//
+// Example:
+//
+//	sigmoid := nn.NewSigmoid()
+func NewSigmoid[B tensor.Backend]() *Sigmoid[B] {
+	return nn.NewSigmoid[B]()
+}
+
+// Tanh represents the Tanh activation function.
+type Tanh[B tensor.Backend] = nn.Tanh[B]
+
+// NewTanh creates a new Tanh activation layer.
+//
+// Example:
+//
+//	tanh := nn.NewTanh()
+func NewTanh[B tensor.Backend]() *Tanh[B] {
+	return nn.NewTanh[B]()
+}
+
+// Loss Functions
+
+// CrossEntropyLoss represents the cross-entropy loss for classification.
+type CrossEntropyLoss[B tensor.Backend] = nn.CrossEntropyLoss[B]
+
+// NewCrossEntropyLoss creates a new cross-entropy loss function.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	criterion := nn.NewCrossEntropyLoss(backend)
+//	loss := criterion.Forward(logits, labels)
+func NewCrossEntropyLoss[B tensor.Backend](backend B) *CrossEntropyLoss[B] {
+	return nn.NewCrossEntropyLoss(backend)
+}
+
+// MSELoss represents the mean squared error loss for regression.
+type MSELoss[B tensor.Backend] = nn.MSELoss[B]
+
+// NewMSELoss creates a new MSE loss function.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	criterion := nn.NewMSELoss(backend)
+//	loss := criterion.Forward(predictions, targets)
+func NewMSELoss[B tensor.Backend](backend B) *MSELoss[B] {
+	return nn.NewMSELoss(backend)
+}
+
+// Sequential
+
+// Sequential represents a sequential container of modules.
+type Sequential[B tensor.Backend] = nn.Sequential[B]
+
+// NewSequential creates a new sequential model.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	model := nn.NewSequential(
+//	    nn.NewLinear(784, 128, backend),
+//	    nn.NewReLU(),
+//	    nn.NewLinear(128, 10, backend),
+//	)
+func NewSequential[B tensor.Backend](modules ...Module[B]) *Sequential[B] {
+	return nn.NewSequential(modules...)
+}
+
+// Initialization functions
+
+// Xavier initializes a tensor using Xavier/Glorot initialization.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	weights := nn.Xavier(784, 128, tensor.Shape{128, 784}, backend)
+func Xavier[B tensor.Backend](fanIn, fanOut int, shape tensor.Shape, backend B) *tensor.Tensor[float32, B] {
+	return nn.Xavier(fanIn, fanOut, shape, backend)
+}
+
+// Zeros initializes a tensor with zeros (for biases).
+//
+// Example:
+//
+//	backend := cpu.New()
+//	bias := nn.Zeros(tensor.Shape{128}, backend)
+func Zeros[B tensor.Backend](shape tensor.Shape, backend B) *tensor.Tensor[float32, B] {
+	return nn.Zeros(shape, backend)
+}
+
+// Ones initializes a tensor with ones.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	weights := nn.Ones(tensor.Shape{128, 784}, backend)
+func Ones[B tensor.Backend](shape tensor.Shape, backend B) *tensor.Tensor[float32, B] {
+	return nn.Ones(shape, backend)
+}
+
+// Randn initializes a tensor with random values from N(0, 1).
+//
+// Example:
+//
+//	backend := cpu.New()
+//	weights := nn.Randn(tensor.Shape{128, 784}, backend)
+func Randn[B tensor.Backend](shape tensor.Shape, backend B) *tensor.Tensor[float32, B] {
+	return nn.Randn(shape, backend)
+}
+
+// Utility functions
+
+// CrossEntropyBackward computes the backward pass for cross-entropy loss.
+func CrossEntropyBackward[B tensor.Backend](
+	logits *tensor.Tensor[float32, B],
+	targets *tensor.Tensor[int32, B],
+	backend B,
+) *tensor.Tensor[float32, B] {
+	return nn.CrossEntropyBackward(logits, targets, backend)
+}
+
+// Accuracy computes the classification accuracy.
+//
+// Example:
+//
+//	acc := nn.Accuracy(predictions, labels)
+//	fmt.Printf("Accuracy: %.2f%%\n", acc*100)
+func Accuracy[B tensor.Backend](
+	logits *tensor.Tensor[float32, B],
+	targets *tensor.Tensor[int32, B],
+) float32 {
+	return nn.Accuracy(logits, targets)
+}

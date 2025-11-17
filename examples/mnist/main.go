@@ -6,11 +6,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/born-ml/born/internal/autodiff"
-	"github.com/born-ml/born/internal/backend/cpu"
-	"github.com/born-ml/born/internal/nn"
-	"github.com/born-ml/born/internal/optim"
-	"github.com/born-ml/born/internal/tensor"
+	"github.com/born-ml/born/autodiff"
+	"github.com/born-ml/born/backend/cpu"
+	"github.com/born-ml/born/nn"
+	"github.com/born-ml/born/optim"
+	"github.com/born-ml/born/tensor"
 )
 
 func main() {
@@ -154,10 +154,10 @@ func main() {
 
 // trainEpoch trains the model for one epoch.
 func trainEpoch[B tensor.Backend](
-	model *MNISTNet[*autodiff.AutodiffBackend[B]],
-	batches []*Batch[*autodiff.AutodiffBackend[B]],
+	model *MNISTNet[*autodiff.Backend[B]],
+	batches []*Batch[*autodiff.Backend[B]],
 	optimizer optim.Optimizer,
-	backend *autodiff.AutodiffBackend[B],
+	backend *autodiff.Backend[B],
 ) (avgLoss float32, accuracy float32) {
 	totalLoss := float32(0.0)
 	totalCorrect := 0
@@ -176,7 +176,7 @@ func trainEpoch[B tensor.Backend](
 			batch.LabelsTensor.Raw(),
 		)
 
-		loss := tensor.New[float32, *autodiff.AutodiffBackend[B]](lossRaw, backend)
+		loss := tensor.New[float32, *autodiff.Backend[B]](lossRaw, backend)
 		lossValue := loss.Raw().AsFloat32()[0]
 
 		// Backward pass (automatic differentiation!)
@@ -209,9 +209,9 @@ func trainEpoch[B tensor.Backend](
 
 // validate evaluates the model on validation data.
 func validate[B tensor.Backend](
-	model *MNISTNet[*autodiff.AutodiffBackend[B]],
-	batches []*Batch[*autodiff.AutodiffBackend[B]],
-	backend *autodiff.AutodiffBackend[B],
+	model *MNISTNet[*autodiff.Backend[B]],
+	batches []*Batch[*autodiff.Backend[B]],
+	backend *autodiff.Backend[B],
 ) (avgLoss float32, accuracy float32) {
 	totalLoss := float32(0.0)
 	totalCorrect := 0
@@ -250,7 +250,7 @@ func validate[B tensor.Backend](
 }
 
 // countParameters counts the number of trainable parameters in the model.
-func countParameters[B tensor.Backend](model *MNISTNet[*autodiff.AutodiffBackend[B]]) int {
+func countParameters[B tensor.Backend](model *MNISTNet[*autodiff.Backend[B]]) int {
 	total := 0
 	for _, param := range model.Parameters() {
 		shape := param.Tensor().Shape()

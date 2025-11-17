@@ -13,7 +13,7 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🎉 **v0.1.0 Initial Release!** (MNIST: 97.44% MLP, 98.18% CNN - production-ready)
+**Project Status**: 🎉 **v0.1.1 Released!** (Public API available - MNIST: 97.44% MLP, 98.18% CNN)
 
 *Celebrating 16 years of Go (2009-2025) with production-ready ML* 🎂
 
@@ -100,9 +100,10 @@ make bench          # Run benchmarks
 package main
 
 import (
-    "github.com/born-ml/born/internal/autodiff"
-    "github.com/born-ml/born/internal/backend/cpu"
-    "github.com/born-ml/born/internal/nn"
+    "github.com/born-ml/born/autodiff"
+    "github.com/born-ml/born/backend/cpu"
+    "github.com/born-ml/born/nn"
+    "github.com/born-ml/born/optim"
 )
 
 func main() {

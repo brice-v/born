@@ -5,6 +5,58 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2025-11-17
+
+### 🔥 Critical Hotfix
+
+**BREAKING (but necessary)**: v0.1.0 had no usable public API! All packages were in `internal/` which cannot be imported by external projects. This hotfix adds proper public packages.
+
+### ✨ Added
+
+**Public API Packages**:
+- `github.com/born-ml/born/tensor` - Type-safe tensor operations
+- `github.com/born-ml/born/nn` - Neural network modules (Linear, Conv2D, MaxPool2D, etc.)
+- `github.com/born-ml/born/optim` - Optimizers (SGD, Adam)
+- `github.com/born-ml/born/backend/cpu` - CPU backend
+- `github.com/born-ml/born/autodiff` - Automatic differentiation
+
+**Documentation**:
+- Comprehensive package documentation for pkg.go.dev
+- Usage examples in each package
+- API reference comments on all public types/functions
+
+### 🔧 Changed
+
+- Updated examples to use public API
+- README updated with correct import paths
+
+### 📦 Migration from v0.1.0
+
+**Before (v0.1.0 - broken for external use)**:
+```go
+import "github.com/born-ml/born/internal/tensor"  // ❌ Cannot import!
+```
+
+**After (v0.1.1 - works!)**:
+```go
+import "github.com/born-ml/born/tensor"  // ✅ Public API
+```
+
+### 🧪 Testing
+
+- All tests pass (internal tests unchanged)
+- golangci-lint: 0 issues
+- Public packages compile successfully
+- Examples work with new imports
+
+### 📊 Statistics
+
+- +876 lines of public API code
+- 9 new public files (doc.go + package wrappers)
+- 5 public packages created
+
+---
+
 ## [0.1.0] - 2025-11-17
 
 ### 🎉 Initial Release
