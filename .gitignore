@@ -1,0 +1,130 @@
+# Born ML Framework - Git Ignore
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Build artifacts
+/build/
+/dist/
+/bin/
+
+# Test coverage
+*.coverage
+*.coverprofile
+coverage.txt
+coverage.html
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Временные файлы разработки
+/tmp/
+*.tmp
+*.temp
+
+# Модели и датасеты (большие файлы)
+*.born
+*.onnx
+*.pt
+*.pth
+*.h5
+*.pb
+/models/
+/datasets/
+*.npy
+*.npz
+
+# Logs
+*.log
+/logs/
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Vendor (если используется)
+/vendor/
+
+# Environment variables (могут содержать секреты!)
+.env
+.env.local
+.env.*.local
+
+# Generated documentation
+/docs/api/generated/
+
+# Benchmark results
+*.bench
+/benchmarks/results/
+
+# Profiling data
+*.prof
+*.pprof
+cpu.prof
+mem.prof
+*.trace
+
+# Go module cache
+go.sum
+
+# Compiled Object files
+*.o
+*.a
+
+# Debug files
+debug
+debug.test
+__debug_bin
+
+# CGO (не используем, но на всякий случай)
+_cgo_*
+_obj/
+_test/
+
+# Assembly generated files
+*.s (except our intentional .s files)
+
+# Vulkan/CUDA generated
+*.spv
+*.ptx
+*.cubin
+
+# Editor backups
+*~
+*.bak
+*.orig
+
+# Node modules (если будет web UI)
+node_modules/
+
+# AI settings - other tools (NOT .claude!)
+.claude/
+.goco/
+.goda/
+
+# Other
+reference/
+
+# Internal developer docs
+INDEX.md
+docs/dev/
