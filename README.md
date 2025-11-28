@@ -13,8 +13,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🚀 **v0.2.0 Coming Soon!** (WebGPU GPU backend - 123x MatMul speedup!)
-**Latest**: ⚡ Phase 2 GPU complete - WebGPU backend with 10.9x inference speedup at batch inference
+**Project Status**: 🎉 **v0.2.0 Released!** (WebGPU GPU backend - 123x MatMul speedup!)
+**Latest**: ⚡ Phase 2 complete - Zero-CGO GPU acceleration with 10.9x inference speedup
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -251,15 +251,14 @@ Full roadmap: See project milestones
 
 - **[Philosophy](docs/PHILOSOPHY.md)** - Production-first design principles
 - **[Use Cases](docs/USE_CASES.md)** - When to use Born (and when not)
-- **[GPU Setup](docs/dev/GPU_SETUP.md)** - WebGPU backend configuration 🆕
 - **[Getting Started](docs/getting-started.md)** - Installation and first steps *(coming soon)*
 - **[API Reference](https://pkg.go.dev/github.com/born-ml/born)** - Complete API documentation
 - **[Examples](examples/)** - Sample code (MNIST MLP, CNN, GPU inference)
 
 ### For Contributors
 
-- **[Kanban Board](docs/dev/kanban/INDEX.md)** - Development roadmap and tasks 🆕
-- **[Contributing](CONTRIBUTING.md)** - How to contribute *(coming soon)*
+- **[Contributing](CONTRIBUTING.md)** - How to contribute
+- **[GitHub Issues](https://github.com/born-ml/born/issues)** - Report bugs or request features
 
 ---
 
@@ -328,6 +327,26 @@ Born is inspired by and learns from:
 - **[TinyGrad](https://github.com/geohot/tinygrad)** - Simplicity principles
 - **[Gonum](https://github.com/gonum/gonum)** - Go numerical computing
 - **[HDF5 for Go](https://github.com/scigolib/hdf5)** - Model serialization, dataset storage (planned)
+
+---
+
+## Acknowledgments
+
+Special thanks to the projects that made Born possible:
+
+### 🙏 [go-webgpu](https://github.com/AlfredDobra662/webgpu)
+
+Born's GPU acceleration is powered by **go-webgpu** - a remarkable pure Go binding for WebGPU via wgpu-native.
+
+**Why go-webgpu is special:**
+- **Zero CGO** - Pure Go bindings using [goffi](https://github.com/AlfredDobra662/goffi) for FFI
+- **Cross-platform** - Works on Windows, Linux, macOS
+- **Modern API** - Clean, idiomatic Go interface to WebGPU
+- **Active development** - Maintained and improving
+
+Without go-webgpu, Born would need CGO for GPU support, making cross-compilation complex and defeating our "pure Go" goal. This library enables us to offer **production-ready GPU acceleration** while maintaining the simplicity of `go build`.
+
+Thank you to [Alfred Dobra](https://github.com/AlfredDobra662) and all contributors!
 
 ---
 

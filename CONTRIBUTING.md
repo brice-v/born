@@ -78,7 +78,7 @@ go test -bench=. ./...
 - Commit with clear messages (see [Commit Guidelines](#commit-guidelines))
 - Push to your branch
 - Create Pull Request
-- Link to related Kanban task
+- Link to related GitHub issue
 
 ---
 
@@ -290,7 +290,7 @@ Include:
 - **Why**: Motivation and context
 - **How**: Implementation approach
 - **Testing**: How you tested
-- **Related**: Link to Kanban task/issue
+- **Related**: Link to GitHub issue
 
 **Template**:
 ```markdown
@@ -311,7 +311,6 @@ Why is this change needed?
 
 ## Related
 Closes #123
-Related to TASK-045
 ```
 
 ### Review Process
