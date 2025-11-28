@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2025-11-17 | **Current Version**: v0.1.0 | **Strategy**: Core Features → Community Validation → GPU Support → v1.0.0 LTS | **Milestone**: v0.1.0 RELEASED! (2025-11-17) → v1.0.0 LTS (2027-2028)
+**Last Updated**: 2025-11-28 | **Current Version**: v0.2.0 | **Strategy**: Core Features → GPU Support → Training Utilities → v1.0.0 LTS | **Milestone**: v0.2.0 RELEASED! (2025-11-28) → v1.0.0 LTS (2027-2028)
 
 ---
 
@@ -38,14 +38,14 @@ Build a **production-ready, type-safe ML framework for Go** with zero external d
 ### Philosophy: Validate → Iterate → Stabilize → LTS
 
 ```
-v0.1.0 (INITIAL RELEASE) ✅ CURRENT (2025-11-17)
-       ↓ (community feedback + validation)
-v0.2.0 (BatchNorm2D + Dropout + Serialization)
-       ↓ (performance optimization)
-v0.3.0 (GPU Support - CUDA)
-       ↓ (stability + optimization)
-v0.4.0 (Distributed Training)
-       ↓ (API refinement + real-world validation)
+v0.1.0 (INITIAL RELEASE) ✅ RELEASED (2025-11-17)
+       ↓ (GPU backend development)
+v0.2.0 (WebGPU GPU Backend) ✅ CURRENT (2025-11-28)
+       ↓ (training utilities)
+v0.3.0 (BatchNorm2D + Dropout + Serialization)
+       ↓ (cross-platform GPU + optimization)
+v0.4.0 (Linux/macOS WebGPU + ONNX Import)
+       ↓ (distributed training)
 v0.5.0-v0.9.0 (Feature completion + API stabilization)
        ↓ (production validation period - 12+ months)
 v1.0.0 LTS → Long-term support (2027-2028)
@@ -61,18 +61,24 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - CPU backend (im2col convolutions)
 - **Validated**: MNIST MLP 97.44%, CNN 98.18%
 
-**v0.2.0** = Training Stability & Model Persistence
+**v0.2.0** = WebGPU GPU Backend ✅ RELEASED
+- Zero-CGO GPU acceleration via go-webgpu
+- GPU operations: MatMul, Add, Sub, Mul, Div, Transpose
+- Activations: ReLU, Sigmoid, Tanh, Softmax
+- Buffer pool for memory efficiency
+- **Performance**: 123x MatMul speedup, 10.9x inference speedup
+- Windows support (Linux/macOS planned for v0.4.0)
+
+**v0.3.0** = Training Stability & Model Persistence
 - BatchNorm2D for stable training
 - Dropout for regularization
 - Model save/load (serialization)
 - Learning rate scheduling
-- Early stopping utilities
 
-**v0.3.0** = GPU Acceleration
-- CUDA backend
-- cuDNN integration for Conv2D/BatchNorm
-- Device transfer utilities
-- Multi-GPU support (basic)
+**v0.4.0** = Cross-Platform GPU & Model Import
+- Linux/macOS WebGPU support
+- ONNX model import
+- Pre-trained model loading
 
 **v1.0.0** = Production LTS
 - Stable API guarantees
@@ -80,14 +86,14 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - Performance optimizations
 - Complete documentation
 
-**Why v0.1.0?**: Core features validated, real-world MNIST results prove correctness. API proven through CNN implementation.
+**Why v0.2.0?**: GPU acceleration is critical for production ML. WebGPU provides zero-CGO GPU support, making Born the first Go ML framework with true GPU acceleration without C dependencies.
 
 ---
 
-## 📊 Current Status (v0.1.0)
+## 📊 Current Status (v0.2.0)
 
-**Phase**: 🎉 Initial Public Release
-**Focus**: Core ML primitives + Validation
+**Phase**: 🚀 WebGPU GPU Backend Release
+**Focus**: GPU Acceleration + Performance
 **Quality**: Production-ready
 
 **What Works**:
@@ -97,12 +103,20 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - ✅ Tape-based reverse-mode autodiff
 - ✅ Gradient computation with chain rule
 - ✅ NN Modules: Linear, Conv2D, MaxPool2D
-- ✅ Activations: ReLU, Sigmoid, Tanh
+- ✅ Activations: ReLU, Sigmoid, Tanh, Softmax
 - ✅ Loss: CrossEntropyLoss (numerically stable)
 - ✅ Optimizers: SGD (momentum), Adam (bias correction)
 - ✅ CPU Backend with im2col algorithm
+- ✅ **WebGPU Backend** with zero-CGO GPU acceleration
+- ✅ GPU Operations: MatMul, Add, Sub, Mul, Div, Transpose
+- ✅ Buffer pool for GPU memory management
 - ✅ Batch processing
 - ✅ Float32/Float64 support
+
+**Performance** (v0.2.0):
+- ✅ **MatMul 1024×1024**: 123x speedup (GPU vs CPU)
+- ✅ **MNIST Inference**: 10.9x speedup (batch=256)
+- ✅ **Throughput**: 62,000+ samples/sec (GPU)
 
 **Validation**:
 - ✅ **MNIST MLP**: 97.44% accuracy (101,770 params)
@@ -112,11 +126,15 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - ✅ **Race Detector**: Clean
 
 **Architecture**:
-- ✅ **Zero external dependencies** (core framework)
+- ✅ **Zero CGO** (including GPU backend!)
 - ✅ **Pure Go** implementation
 - ✅ **Type-safe** generics (Go 1.25+)
-- ✅ **Backend abstraction** (CPU ready, GPU pluggable)
+- ✅ **Backend abstraction** (CPU + WebGPU)
 - ✅ **Decorator pattern** (autodiff wraps any backend)
+
+**Platform Support**:
+- ✅ **Windows**: Full GPU support (WebGPU)
+- ✅ **Linux/macOS**: CPU backend (GPU in v0.4.0)
 
 **History**: See [CHANGELOG.md](CHANGELOG.md) for complete release notes
 
@@ -124,43 +142,54 @@ v1.0.0 LTS → Long-term support (2027-2028)
 
 ## 📅 Roadmap
 
-### **v0.2.0 - Training Stability** (Q1 2026) [NEXT]
+### **v0.2.0 - WebGPU GPU Backend** ✅ RELEASED (2025-11-28)
+
+**Goal**: GPU acceleration without CGO dependencies
+
+**Delivered**:
+- ✅ WebGPU backend via go-webgpu (zero-CGO)
+- ✅ GPU operations: MatMul, Add, Sub, Mul, Div, Transpose
+- ✅ Activations: ReLU, Sigmoid, Tanh, Softmax
+- ✅ Buffer pool for memory efficiency
+- ✅ Memory statistics tracking
+- ✅ Graceful degradation on systems without GPU
+- ✅ 123x MatMul speedup, 10.9x inference speedup
+- ✅ Windows support (Linux/macOS in v0.4.0)
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+---
+
+### **v0.3.0 - Training Stability** (Q1 2026) [NEXT]
 
 **Goal**: Add essential training utilities and model persistence
 
 **Duration**: 4-6 weeks
 
 **Planned Features**:
-1. **TASK-007: BatchNorm2D** (HIGH)
+1. **BatchNorm2D** (HIGH)
    - Batch Normalization for stable training
    - Training/eval mode switching
    - Running statistics tracking
    - Numerical stability in backward pass
 
-2. **TASK-008: Dropout** (MEDIUM)
+2. **Dropout** (MEDIUM)
    - Dropout regularization
    - Training/eval mode support
    - Efficient mask generation
    - Inverted dropout (scale at training time)
 
-3. **TASK-009: Model Serialization** (HIGH)
+3. **Model Serialization** (HIGH)
    - Save/load model weights
    - State dict API (PyTorch-like)
-   - Format: HDF5 (binary, efficient) or JSON (human-readable)
+   - Format: Binary (efficient) or JSON (human-readable)
    - Backward compatibility guarantees
-   - Integration with [HDF5 for Go](https://github.com/scigolib/hdf5)
 
-4. **TASK-010: Learning Rate Scheduling** (MEDIUM)
+4. **Learning Rate Scheduling** (MEDIUM)
    - StepLR scheduler
    - ExponentialLR scheduler
    - ReduceLROnPlateau (validation-based)
    - Warmup utilities
-
-5. **TASK-011: Training Utilities** (LOW)
-   - Early stopping
-   - Model checkpointing
-   - Training progress bars
-   - Metric tracking
 
 **Success Criteria**:
 - ✅ ImageNet-style training pipeline working
@@ -173,62 +202,55 @@ v1.0.0 LTS → Long-term support (2027-2028)
 
 ---
 
-### **v0.3.0 - GPU Acceleration** (Q2-Q3 2026) [PLANNING]
+### **v0.4.0 - Cross-Platform GPU & Model Import** (Q2 2026) [PLANNING]
 
-**Goal**: CUDA backend for GPU training
+**Goal**: Linux/macOS GPU support and ONNX model import
 
-**Duration**: 12-16 weeks (complex CGo + CUDA integration)
+**Duration**: 8-12 weeks
 
 **Planned Features**:
-1. **TASK-012: CUDA Backend** (CRITICAL)
-   - cuBLAS integration for matmul
-   - cuDNN integration for Conv2D/BatchNorm
-   - Memory management (device allocations)
-   - CUDA kernels for element-wise ops
+1. **Linux/macOS WebGPU** (CRITICAL)
+   - Vulkan backend for Linux
+   - Metal backend for macOS
+   - Cross-platform build system
+   - CI/CD for all platforms
 
-2. **TASK-013: Device Management** (HIGH)
-   - Tensor.To(device) API
-   - CPU ↔ GPU transfers
-   - Multi-GPU detection
-   - Unified memory support
+2. **ONNX Model Import** (HIGH)
+   - ONNX parser and loader
+   - Common layer support
+   - Pre-trained model loading
+   - PyTorch/TensorFlow model conversion
 
-3. **TASK-014: Performance Optimization** (MEDIUM)
+3. **Performance Optimization** (MEDIUM)
    - Kernel fusion where applicable
-   - Memory pooling
    - Asynchronous operations
-   - Stream synchronization
+   - Improved memory pooling
 
 **Success Criteria**:
-- ✅ 10x+ speedup on CNN training vs CPU
-- ✅ cuDNN-level performance on Conv2D
-- ✅ Stable multi-GPU training
+- ✅ WebGPU works on Linux/macOS
+- ✅ Import ResNet-50 from ONNX
+- ✅ Pre-trained ImageNet models working
 - ✅ Comprehensive benchmarks
 
-**Challenges**:
-- CGo complexity for CUDA
-- Cross-platform build system
-- Memory management overhead
-- Debugging GPU code
-
-**Target**: Q2-Q3 2026
+**Target**: Q2 2026
 
 ---
 
-### **v0.4.0 - Distributed Training** (Q4 2026 - Q1 2027) [FUTURE]
+### **v0.5.0 - Distributed Training** (Q3-Q4 2026) [FUTURE]
 
 **Goal**: Multi-GPU and multi-node training
 
 **Planned Features**:
 - Data Parallel training (DDP)
 - Model Parallel support
-- NCCL backend for communication
 - Gradient synchronization
+- Multi-GPU performance optimization
 
-**Target**: Q4 2026 - Q1 2027
+**Target**: Q3-Q4 2026
 
 ---
 
-### **v0.5.0 - v0.9.0 - Feature Completion & API Stabilization** (2027)
+### **v0.6.0 - v0.9.0 - Feature Completion & API Stabilization** (2027)
 
 **Goal**: Complete feature set and stabilize API for v1.0
 
@@ -400,5 +422,5 @@ v1.0.0 LTS → Long-term support (2027-2028)
 
 ---
 
-*Version 1.0 (2025-11-17)*
-*Current: v0.1.0 (INITIAL RELEASE) | Phase: Community Validation | Next: v0.2.0 (Training Stability) | Target: v1.0.0 LTS (2027-2028)*
+*Version 2.0 (2025-11-28)*
+*Current: v0.2.0 (WebGPU GPU Backend) | Phase: GPU Acceleration | Next: v0.3.0 (Training Stability) | Target: v1.0.0 LTS (2027-2028)*
