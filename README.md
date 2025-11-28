@@ -8,6 +8,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Test Status](https://github.com/born-ml/born/actions/workflows/test.yml/badge.svg)](https://github.com/born-ml/born/actions/workflows/test.yml)
 [![Codecov](https://codecov.io/gh/born-ml/born/branch/main/graph/badge.svg?token=CODECOV_TOKEN)](https://codecov.io/gh/born-ml/born)
+[![Discussions](https://img.shields.io/github/discussions/born-ml/born?logo=github&label=Discussions)](https://github.com/born-ml/born/discussions)
 
 > **"Models are born production-ready"**
 
