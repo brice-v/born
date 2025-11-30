@@ -129,3 +129,46 @@ func (t *Tanh[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tensor[float
 func (t *Tanh[B]) Parameters() []*Parameter[B] {
 	return nil
 }
+
+// SiLUBackend is an interface for backends that support SiLU activation.
+type SiLUBackend interface {
+	SiLU(*tensor.RawTensor) *tensor.RawTensor
+}
+
+// SiLU is a SiLU (Swish) activation module.
+//
+// Applies the element-wise function: f(x) = x * sigmoid(x)
+//
+// SiLU (Sigmoid Linear Unit), also known as Swish, is widely used in
+// modern transformer architectures like LLaMA, Mistral, and GPT-Neo.
+// It provides smooth, non-monotonic activation that helps with gradient flow.
+//
+// Example:
+//
+//	silu := nn.NewSiLU[Backend]()
+//	output := silu.Forward(input)  // Smooth activation
+type SiLU[B tensor.Backend] struct{}
+
+// NewSiLU creates a new SiLU activation module.
+func NewSiLU[B tensor.Backend]() *SiLU[B] {
+	return &SiLU[B]{}
+}
+
+// Forward applies SiLU activation: f(x) = x * sigmoid(x).
+func (s *SiLU[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tensor[float32, B] {
+	backend := input.Backend()
+
+	// Check if backend supports SiLU via interface
+	if siluBackend, ok := any(backend).(SiLUBackend); ok {
+		resultRaw := siluBackend.SiLU(input.Raw())
+		return tensor.New[float32, B](resultRaw, backend)
+	}
+
+	// Fallback
+	panic("SiLU: backend must implement SiLU operation (use autodiff.AutodiffBackend)")
+}
+
+// Parameters returns an empty slice (SiLU has no trainable parameters).
+func (s *SiLU[B]) Parameters() []*Parameter[B] {
+	return nil
+}

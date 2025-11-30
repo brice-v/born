@@ -62,3 +62,17 @@ type BackwardCapable = autodiff.BackwardCapable
 func Backward[T tensor.DType, B BackwardCapable](t *tensor.Tensor[T, B], backend B) map[*tensor.RawTensor]*tensor.RawTensor {
 	return autodiff.Backward(t, backend)
 }
+
+// NoGrad disables gradient recording for operations within the function.
+// Use this for inference or operations that shouldn't be differentiated.
+//
+// Example:
+//
+//	backend := autodiff.New(cpu.New())
+//	autodiff.NoGrad(backend, func() {
+//	    // Operations here won't be recorded for gradients
+//	    output := model.Forward(input)
+//	})
+func NoGrad[B tensor.Backend](backend *Backend[B], fn func()) {
+	backend.NoGrad(fn)
+}

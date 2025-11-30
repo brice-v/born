@@ -105,6 +105,51 @@ func NewTanh[B tensor.Backend]() *Tanh[B] {
 	return nn.NewTanh[B]()
 }
 
+// SiLU represents the Sigmoid Linear Unit (SiLU/Swish) activation function.
+// SiLU(x) = x * sigmoid(x).
+type SiLU[B tensor.Backend] = nn.SiLU[B]
+
+// NewSiLU creates a new SiLU activation layer.
+//
+// Example:
+//
+//	silu := nn.NewSiLU[B]()
+//	output := silu.Forward(input)
+func NewSiLU[B tensor.Backend]() *SiLU[B] {
+	return nn.NewSiLU[B]()
+}
+
+// Embedding and Normalization Layers
+
+// Embedding represents a lookup table for embeddings.
+type Embedding[B tensor.Backend] = nn.Embedding[B]
+
+// NewEmbedding creates a new embedding layer.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	embed := nn.NewEmbedding[B](50000, 768, backend)  // vocab=50000, dim=768
+//	tokenIds := tensor.FromSlice([]int32{1, 5, 10}, tensor.Shape{1, 3}, backend)
+//	embeddings := embed.Forward(tokenIds)  // [1, 3, 768]
+func NewEmbedding[B tensor.Backend](numEmbeddings, embeddingDim int, backend B) *Embedding[B] {
+	return nn.NewEmbedding(numEmbeddings, embeddingDim, backend)
+}
+
+// RMSNorm represents Root Mean Square Layer Normalization.
+type RMSNorm[B tensor.Backend] = nn.RMSNorm[B]
+
+// NewRMSNorm creates a new RMSNorm layer.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	norm := nn.NewRMSNorm[B](768, 1e-5, backend)
+//	output := norm.Forward(input)  // [..., 768] -> [..., 768]
+func NewRMSNorm[B tensor.Backend](dModel int, epsilon float32, backend B) *RMSNorm[B] {
+	return nn.NewRMSNorm(dModel, epsilon, backend)
+}
+
 // Loss Functions
 
 // CrossEntropyLoss represents the cross-entropy loss for classification.

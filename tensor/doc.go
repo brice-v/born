@@ -42,8 +42,9 @@
 // # Device Support
 //
 // Tensors can reside on different devices:
-//   - CPU: Pure Go implementation (current)
-//   - CUDA: GPU support (planned for v0.3.0)
+//   - CPU: Pure Go implementation (v0.1.0+)
+//   - WebGPU: Zero-CGO GPU acceleration (v0.2.0+, Windows)
+//   - CUDA: GPU support (planned for v0.5.0)
 //
 // # Broadcasting
 //
@@ -57,4 +58,37 @@
 //
 // Tensors use zero-copy operations where possible. The underlying data is
 // reference-counted and automatically freed when no longer needed.
+//
+// # Available Operations (v0.3.0+)
+//
+// Tensor[T, B] provides 31 type-safe operations:
+//
+// Scalar operations:
+//
+//	y := x.MulScalar(2.0)    // Multiply by scalar
+//	y := x.AddScalar(1.0)    // Add scalar
+//	y := x.SubScalar(0.5)    // Subtract scalar
+//	y := x.DivScalar(2.0)    // Divide by scalar
+//
+// Math operations:
+//
+//	y := x.Exp()             // Exponential
+//	y := x.Log()             // Natural logarithm
+//	y := x.Sqrt()            // Square root
+//	y := x.Rsqrt()           // Reciprocal square root
+//	y := x.Cos()             // Cosine
+//	y := x.Sin()             // Sine
+//
+// Comparison operations (return Tensor[bool, B]):
+//
+//	mask := x.Greater(y)     // or x.Gt(y)
+//	mask := x.Lower(y)       // or x.Lt(y)
+//	mask := x.Equal(y)       // or x.Eq(y)
+//
+// Type conversion:
+//
+//	i := x.Int32()           // Convert to int32
+//	f := x.Float64()         // Convert to float64
+//
+// See method documentation for full list of operations.
 package tensor

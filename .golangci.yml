@@ -184,12 +184,24 @@ linters:
         linters:
           - dupl         # Expected duplication for type-specific implementations
 
+      # internal/backend/cpu - type-specific implementations for new operations (TASK-019)
+      - path: internal/backend/cpu/(scalar|comparison|boolean|activation|math|reduce|shape|conversion)\.go
+        linters:
+          - dupl         # Expected duplication for type-specific implementations (float32, float64, int32, int64, uint8, bool)
+
       # Conv2D/MaxPool2D - separate float32/float64 for performance (avoid interface overhead)
       - path: internal/backend/cpu/(conv2d|maxpool2d)\.go
         linters:
           - dupl         # Intentional type-specific implementations
           - gocognit     # im2col and pooling algorithms inherently complex
           - gocritic     # Math notation (N, H, W, CIn, COut) for clarity
+
+      # Manipulation operations - type-specific implementations for performance
+      - path: internal/backend/cpu/manipulation\.go
+        linters:
+          - dupl         # Intentional duplication for type-specific implementations (float32, float64, int32, int64, uint8, bool)
+          - gocyclo      # Cat/Chunk algorithms inherently complex with tensor indexing
+          - cyclop       # Complex tensor manipulation acceptable
 
       - path: internal/autodiff/ops/(conv2d|maxpool2d)\.go
         linters:

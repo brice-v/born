@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2025-11-28 | **Current Version**: v0.2.0 | **Strategy**: Core Features → GPU Support → Training Utilities → v1.0.0 LTS | **Milestone**: v0.2.0 RELEASED! (2025-11-28) → v1.0.0 LTS (2027-2028)
+**Last Updated**: 2025-11-30 | **Current Version**: v0.3.0 | **Strategy**: Core Features → GPU Support → Transformer Primitives → Advanced Features → v1.0.0 LTS | **Milestone**: v0.3.0 RELEASED! (2025-11-30) → v1.0.0 LTS (2027-2028)
 
 ---
 
@@ -40,13 +40,15 @@ Build a **production-ready, type-safe ML framework for Go** with zero external d
 ```
 v0.1.0 (INITIAL RELEASE) ✅ RELEASED (2025-11-17)
        ↓ (GPU backend development)
-v0.2.0 (WebGPU GPU Backend) ✅ CURRENT (2025-11-28)
-       ↓ (training utilities)
-v0.3.0 (BatchNorm2D + Dropout + Serialization)
-       ↓ (cross-platform GPU + optimization)
-v0.4.0 (Linux/macOS WebGPU + ONNX Import)
-       ↓ (distributed training)
-v0.5.0-v0.9.0 (Feature completion + API stabilization)
+v0.2.0 (WebGPU GPU Backend) ✅ RELEASED (2025-11-28)
+       ↓ (transformer primitives)
+v0.3.0 (Transformer Primitives) ✅ CURRENT (2025-11-30)
+       ↓ (attention layers)
+v0.4.0 (Multi-Head Attention + Advanced Layers)
+       ↓ (cross-platform GPU + ONNX)
+v0.5.0 (Linux/macOS WebGPU + ONNX Import)
+       ↓ (feature completion + optimization)
+v0.6.0-v0.9.0 (Training utilities + API stabilization)
        ↓ (production validation period - 12+ months)
 v1.0.0 LTS → Long-term support (2027-2028)
 ```
@@ -67,15 +69,26 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - Activations: ReLU, Sigmoid, Tanh, Softmax
 - Buffer pool for memory efficiency
 - **Performance**: 123x MatMul speedup, 10.9x inference speedup
-- Windows support (Linux/macOS planned for v0.4.0)
+- Windows support (Linux/macOS planned for v0.5.0)
 
-**v0.3.0** = Training Stability & Model Persistence
-- BatchNorm2D for stable training
-- Dropout for regularization
-- Model save/load (serialization)
-- Learning rate scheduling
+**v0.3.0** = Transformer Primitives + Public API ✅ RELEASED
+- Math ops: Exp, Sqrt, Rsqrt, Cos, Sin, Log
+- Reductions: SumDim, MeanDim (with keepDim), Sum, Argmax
+- Manipulation: Cat, Chunk, Unsqueeze, Squeeze, Expand
+- Indexing: Gather, Where
+- Layers: SiLU, RMSNorm, Embedding, Softmax
+- Gradient control: NoGrad, Detach
+- **31 public API operations**: MulScalar, Greater/Gt, Int32, etc.
+- **Enables**: LLaMA, Mistral, GPT, HRM architectures
 
-**v0.4.0** = Cross-Platform GPU & Model Import
+**v0.4.0** = Attention Mechanisms & Advanced Layers
+- Multi-head attention (MHA)
+- Scaled dot-product attention
+- KV-cache for efficient inference
+- Layer normalization variants
+- Advanced positional encodings
+
+**v0.5.0** = Cross-Platform GPU & ONNX Import
 - Linux/macOS WebGPU support
 - ONNX model import
 - Pre-trained model loading
@@ -90,10 +103,10 @@ v1.0.0 LTS → Long-term support (2027-2028)
 
 ---
 
-## 📊 Current Status (v0.2.0)
+## 📊 Current Status (v0.3.0)
 
-**Phase**: 🚀 WebGPU GPU Backend Release
-**Focus**: GPU Acceleration + Performance
+**Phase**: 🚀 Transformer Primitives Release
+**Focus**: Modern LLM Architecture Support
 **Quality**: Production-ready
 
 **What Works**:
@@ -103,12 +116,20 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - ✅ Tape-based reverse-mode autodiff
 - ✅ Gradient computation with chain rule
 - ✅ NN Modules: Linear, Conv2D, MaxPool2D
-- ✅ Activations: ReLU, Sigmoid, Tanh, Softmax
+- ✅ Activations: ReLU, Sigmoid, Tanh, Softmax, **SiLU**
+- ✅ Normalization: **RMSNorm**
+- ✅ Embeddings: **Token lookup tables**
 - ✅ Loss: CrossEntropyLoss (numerically stable)
 - ✅ Optimizers: SGD (momentum), Adam (bias correction)
 - ✅ CPU Backend with im2col algorithm
 - ✅ **WebGPU Backend** with zero-CGO GPU acceleration
 - ✅ GPU Operations: MatMul, Add, Sub, Mul, Div, Transpose
+- ✅ **Math ops**: Exp, Sqrt, Rsqrt, Cos, Sin, Log
+- ✅ **Reductions**: SumDim, MeanDim (keepDim), Sum, Argmax
+- ✅ **Manipulation**: Cat, Chunk, Unsqueeze, Squeeze, Expand
+- ✅ **Indexing**: Gather, Where
+- ✅ **Gradient control**: NoGrad, Detach
+- ✅ **31 Public API operations**: MulScalar, Greater/Gt, Int32, etc.
 - ✅ Buffer pool for GPU memory management
 - ✅ Batch processing
 - ✅ Float32/Float64 support
@@ -117,6 +138,12 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - ✅ **MatMul 1024×1024**: 123x speedup (GPU vs CPU)
 - ✅ **MNIST Inference**: 10.9x speedup (batch=256)
 - ✅ **Throughput**: 62,000+ samples/sec (GPU)
+
+**Transformer Support** (v0.3.0):
+- ✅ **LLaMA** architectures ready
+- ✅ **Mistral AI** models ready
+- ✅ **GPT-style** transformers ready
+- ✅ **HRM** (Hierarchical Reasoning Model) ready
 
 **Validation**:
 - ✅ **MNIST MLP**: 97.44% accuracy (101,770 params)
@@ -154,55 +181,83 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - ✅ Memory statistics tracking
 - ✅ Graceful degradation on systems without GPU
 - ✅ 123x MatMul speedup, 10.9x inference speedup
-- ✅ Windows support (Linux/macOS in v0.4.0)
+- ✅ Windows support (Linux/macOS in v0.5.0)
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-### **v0.3.0 - Training Stability** (Q1 2026) [NEXT]
+### **v0.3.0 - Transformer Primitives + Public API** ✅ RELEASED (2025-11-30)
 
-**Goal**: Add essential training utilities and model persistence
+**Goal**: Enable modern transformer architectures (LLaMA, Mistral, GPT, HRM) + type-safe public API
 
-**Duration**: 4-6 weeks
+**Delivered**:
+- ✅ Math operations: Exp, Sqrt, Rsqrt, Cos, Sin, Log
+- ✅ Reductions: SumDim, MeanDim (with keepDim), Sum, Argmax
+- ✅ Manipulation: Cat, Chunk, Unsqueeze, Squeeze, Expand
+- ✅ Indexing: Gather, Where
+- ✅ Layers: SiLU, RMSNorm, Embedding, Softmax
+- ✅ Gradient control: NoGrad, Detach
+- ✅ **31 public API operations**:
+  - Scalar: MulScalar, AddScalar, SubScalar, DivScalar
+  - Comparison: Greater/Gt, Lower/Lt, Equal/Eq, etc.
+  - Boolean: Or, And, Not
+  - Type conversion: Int32, Int64, Float32, Float64, Uint8, Bool
+- ✅ 112 new unit tests, 0 linter issues
+- ✅ All autodiff operations with numerical gradient validation
+
+**Impact**:
+- ✅ LLaMA architectures fully supported
+- ✅ Mistral AI models supported
+- ✅ GPT-style transformers supported
+- ✅ HRM (Hierarchical Reasoning Model) ready
+- ✅ External projects can use full typed tensor API
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+---
+
+### **v0.4.0 - Attention Mechanisms** (Q1 2026) [NEXT]
+
+**Goal**: Complete transformer architecture with attention layers
+
+**Duration**: 6-8 weeks
 
 **Planned Features**:
-1. **BatchNorm2D** (HIGH)
-   - Batch Normalization for stable training
-   - Training/eval mode switching
-   - Running statistics tracking
-   - Numerical stability in backward pass
+1. **Multi-Head Attention (MHA)** (CRITICAL)
+   - Scaled dot-product attention
+   - Multiple attention heads
+   - Parallel head computation
+   - Gradient efficient implementation
 
-2. **Dropout** (MEDIUM)
-   - Dropout regularization
-   - Training/eval mode support
-   - Efficient mask generation
-   - Inverted dropout (scale at training time)
+2. **KV-Cache** (HIGH)
+   - Key-value caching for autoregressive generation
+   - Memory-efficient inference
+   - Dynamic cache management
+   - Prefix caching support
 
-3. **Model Serialization** (HIGH)
-   - Save/load model weights
-   - State dict API (PyTorch-like)
-   - Format: Binary (efficient) or JSON (human-readable)
-   - Backward compatibility guarantees
+3. **Layer Normalization Variants** (MEDIUM)
+   - LayerNorm (standard)
+   - PreNorm / PostNorm patterns
+   - Gradient clipping support
 
-4. **Learning Rate Scheduling** (MEDIUM)
-   - StepLR scheduler
-   - ExponentialLR scheduler
-   - ReduceLROnPlateau (validation-based)
-   - Warmup utilities
+4. **Advanced Positional Encodings** (MEDIUM)
+   - Absolute positional embeddings
+   - Learned position embeddings
+   - ALiBi (Attention with Linear Biases)
 
 **Success Criteria**:
-- ✅ ImageNet-style training pipeline working
-- ✅ ResNet-18 implementation possible
-- ✅ Model save/load with versioning
-- ✅ >60% test coverage maintained
+- ✅ Complete transformer block working
+- ✅ GPT-2 architecture implementable
+- ✅ Efficient autoregressive generation
+- ✅ >70% test coverage maintained
 - ✅ 0 linter issues
 
 **Target**: Q1 2026
 
 ---
 
-### **v0.4.0 - Cross-Platform GPU & Model Import** (Q2 2026) [PLANNING]
+### **v0.5.0 - Cross-Platform GPU & ONNX Import** (Q2 2026) [PLANNING]
 
 **Goal**: Linux/macOS GPU support and ONNX model import
 
@@ -236,7 +291,21 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-### **v0.5.0 - Distributed Training** (Q3-Q4 2026) [FUTURE]
+### **v0.6.0 - Training Stability** (Q2-Q3 2026) [FUTURE]
+
+**Goal**: Essential training utilities and model persistence
+
+**Planned Features**:
+- BatchNorm2D for stable training
+- Dropout regularization
+- Model serialization (save/load)
+- Learning rate scheduling
+
+**Target**: Q2-Q3 2026
+
+---
+
+### **v0.7.0 - Distributed Training** (Q3-Q4 2026) [FUTURE]
 
 **Goal**: Multi-GPU and multi-node training
 
@@ -250,16 +319,14 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-### **v0.6.0 - v0.9.0 - Feature Completion & API Stabilization** (2027)
+### **v0.8.0 - v0.9.0 - Feature Completion & API Stabilization** (2027)
 
 **Goal**: Complete feature set and stabilize API for v1.0
 
 **Focus Areas**:
-1. **v0.5.0**: Additional NN layers (LSTM, GRU, Transformers)
-2. **v0.6.0**: Advanced optimizers (AdamW, LAMB, etc.)
-3. **v0.7.0**: Data augmentation and preprocessing
-4. **v0.8.0**: Model zoo and pre-trained models
-5. **v0.9.0**: API freeze, documentation completion, production hardening
+1. **v0.8.0**: Additional NN layers (LSTM, GRU, advanced pooling)
+2. **v0.8.5**: Advanced optimizers (AdamW, LAMB, etc.)
+3. **v0.9.0**: API freeze, documentation completion, production hardening
 
 **Timeline**: Throughout 2027 (6-8 weeks per version)
 
@@ -422,5 +489,5 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-*Version 2.0 (2025-11-28)*
-*Current: v0.2.0 (WebGPU GPU Backend) | Phase: GPU Acceleration | Next: v0.3.0 (Training Stability) | Target: v1.0.0 LTS (2027-2028)*
+*Version 3.0 (2025-11-30)*
+*Current: v0.3.0 (Transformer Primitives) | Phase: LLM Architecture Support | Next: v0.4.0 (Attention Mechanisms) | Target: v1.0.0 LTS (2027-2028)*

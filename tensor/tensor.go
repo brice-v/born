@@ -157,6 +157,33 @@ func NewRaw(shape Shape, dtype DataType, device Device) (*RawTensor, error) {
 	return tensor.NewRaw(shape, dtype, device)
 }
 
+// Manipulation functions
+
+// Cat concatenates tensors along a dimension.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	a := tensor.Ones[float32](tensor.Shape{2, 3}, backend)
+//	b := tensor.Zeros[float32](tensor.Shape{2, 3}, backend)
+//	c := tensor.Cat([]*tensor.Tensor[float32, B]{a, b}, 0)  // Shape: [4, 3]
+func Cat[T DType, B Backend](tensors []*Tensor[T, B], dim int) *Tensor[T, B] {
+	return tensor.Cat(tensors, dim)
+}
+
+// Where selects elements from x or y based on condition.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	cond := tensor.Full[bool](tensor.Shape{3}, true, backend)
+//	x := tensor.Full[float32](tensor.Shape{3}, 1.0, backend)
+//	y := tensor.Full[float32](tensor.Shape{3}, 0.0, backend)
+//	result := tensor.Where(cond, x, y)  // [1.0, 1.0, 1.0]
+func Where[T DType, B Backend](cond *Tensor[bool, B], x, y *Tensor[T, B]) *Tensor[T, B] {
+	return tensor.Where(cond, x, y)
+}
+
 // Utility functions
 
 // BroadcastShapes computes the broadcast shape for two shapes following NumPy broadcasting rules.

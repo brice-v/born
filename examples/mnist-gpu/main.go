@@ -214,7 +214,7 @@ func forwardCPU(backend *cpu.Backend, input, w1, b1, w2, b2, w3, b3 *tensor.RawT
 	// Layer 3: h2 @ W3 + b3, then Softmax
 	output := backend.MatMul(h2, w3)
 	output = addBias(backend, output, b3)
-	output = backend.Softmax(output)
+	output = backend.Softmax(output, -1)
 
 	return output
 }
@@ -234,7 +234,7 @@ func forwardGPU(backend *webgpu.Backend, input, w1, b1, w2, b2, w3, b3 *tensor.R
 	// Layer 3: h2 @ W3 + b3, then Softmax
 	output := backend.MatMul(h2, w3)
 	output = addBiasGPU(backend, output, b3)
-	output = backend.Softmax(output)
+	output = backend.Softmax(output, -1)
 
 	return output
 }

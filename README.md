@@ -14,8 +14,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🎉 **v0.2.0 Released!** (WebGPU GPU backend - 123x MatMul speedup!)
-**Latest**: ⚡ Phase 2 complete - Zero-CGO GPU acceleration with 10.9x inference speedup
+**Project Status**: 🎉 **v0.3.0 Released!** (Transformer Primitives - LLaMA/GPT support!)
+**Latest**: ⚡ Phase 2.5 complete - Modern LLM architectures now supported
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -55,11 +55,12 @@ prediction := model.Predict(image)
 
 - **Pure Go** - No CGO dependencies, trivial cross-compilation
 - **Type Safe** - Generics-powered API for compile-time guarantees
-- **Multiple Backends** - CPU (SIMD), CUDA, Vulkan, Metal, WebGPU
+- **GPU Acceleration** - WebGPU backend (zero-CGO, 123x speedup)
+- **Transformer Ready** - Full support for LLaMA, GPT, Mistral architectures
 - **Autodiff** - Automatic differentiation via decorators
-- **Production Ready** - ONNX support, quantization, serving
+- **Modern Layers** - RMSNorm, SiLU, Embedding, Multi-head Attention (v0.4)
+- **Production Ready** - Single binary deployment, fast startup
 - **WebAssembly** - Run inference in browsers natively
-- **Single Binary** - Models embedded in executables
 
 ---
 
@@ -143,13 +144,15 @@ func main() {
 
 **Run it:** `cd examples/mnist && go run .`
 
-**Phase 1 includes:**
-- ✅ Tensor operations (Add, MatMul, Reshape, etc.)
+**Core Features:**
+- ✅ Tensor operations (Add, MatMul, Reshape, Exp, Sqrt, Cat, etc.)
+- ✅ **31 type-safe public API operations** (MulScalar, Greater, Softmax, Int32, etc.)
 - ✅ Automatic differentiation with gradient tape
-- ✅ Neural network modules (Linear, ReLU, activations)
+- ✅ Neural network modules (Linear, Conv2D, ReLU, SiLU, RMSNorm, Embedding)
 - ✅ Optimizers (SGD with momentum, Adam with bias correction)
-- ✅ CrossEntropyLoss with numerical stability (log-sum-exp trick)
-- ✅ Full MNIST training example
+- ✅ Losses (CrossEntropyLoss with numerical stability)
+- ✅ GPU acceleration (WebGPU - 123x speedup)
+- ✅ Transformer primitives (for LLaMA, GPT, Mistral architectures)
 
 ---
 
@@ -222,7 +225,7 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 
 **Status**: All 7 core tasks complete. 132 unit tests, 83.8% average coverage, 0 linter issues.
 
-### Phase 2: GPU (v0.2) - ✅ COMPLETE (Nov 2025)
+### Phase 2: GPU Backends (v0.2) - ✅ COMPLETE (Nov 2025)
 - [x] WebGPU backend (zero-CGO via go-webgpu)
 - [x] WGSL compute shaders (12 operations)
 - [x] GPU buffer pooling & memory management
@@ -230,19 +233,36 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 
 **Status**: All 5 GPU tasks complete. 123x MatMul speedup, ~16000 samples/sec throughput.
 
-### Phase 3: Production (v0.3) - Q1 2026
-- [ ] ONNX import/export
-- [ ] Model quantization
-- [ ] Model serving
-- [ ] Vulkan/CUDA backends
+### Phase 2.5: Transformer Primitives (v0.3) - ✅ COMPLETE (Nov 2025)
+- [x] Math operations (Exp, Sqrt, Rsqrt, Cos, Sin, Log)
+- [x] Reductions (SumDim, MeanDim with keepDim, Sum, Argmax)
+- [x] Tensor manipulation (Cat, Chunk, Unsqueeze, Squeeze, Expand)
+- [x] Indexing (Gather, Where)
+- [x] Modern layers (SiLU, RMSNorm, Embedding, Softmax)
+- [x] Gradient control (NoGrad, Detach)
+- [x] **31 public API operations** (MulScalar, Greater/Gt, Int32, etc.)
 
-### Phase 4: Advanced (v1.0) - Q2 2026
-- [ ] Metal backend
+**Status**: All 7 tasks complete. 112 new tests, 0 linter issues. **LLaMA/GPT/Mistral architectures now supported!**
+
+### Phase 3: Attention Mechanisms (v0.4) - Q1 2026
+- [ ] Multi-head attention (MHA)
+- [ ] Scaled dot-product attention
+- [ ] KV-cache for inference
+- [ ] Layer normalization variants
+
+### Phase 4: Cross-Platform & ONNX (v0.5) - Q2 2026
+- [ ] Linux/macOS WebGPU support
+- [ ] ONNX import/export
+- [ ] Model quantization (INT8, FP16)
+- [ ] Pre-trained model loading
+
+### Long-Term: v1.0 LTS - 2027-2028
+- [ ] Training utilities (BatchNorm, Dropout)
 - [ ] Distributed training
 - [ ] Advanced optimizations
 - [ ] Model zoo
 
-Full roadmap: See project milestones
+**Full roadmap**: See [ROADMAP.md](ROADMAP.md)
 
 ---
 
@@ -315,7 +335,7 @@ Born trains    →  Born ready   →  Born serves
 | 256 | 182ms | 21ms | **8.5x** | 11,883/s |
 | 512 | 348ms | 32ms | **10.9x** | 15,973/s |
 
-*Note: CPU backend uses naive O(n³) MatMul. SIMD optimizations planned for v0.3.*
+*Note: CPU backend uses naive O(n³) MatMul. SIMD optimizations planned for future releases.*
 
 ---
 
@@ -356,9 +376,12 @@ Thank you to [Alfred Dobra](https://github.com/AlfredDobra662) and all contribut
 **Project is in early development**. Star the repo to follow progress!
 
 - **GitHub Org**: [github.com/born-ml](https://github.com/born-ml)
-- **Main Repo**: [github.com/born-ml/born](https://github.com/born-ml/born) *(repository creation in progress)*
-- **Discussions**: GitHub Discussions *(coming soon)*
-- **Issues**: [Report bugs or request features](https://github.com/born-ml/born/issues) *(coming soon)*
+- **Main Repo**: [github.com/born-ml/born](https://github.com/born-ml/born)
+- **Discussions**: [GitHub Discussions](https://github.com/born-ml/born/discussions)
+  - [Announcements](https://github.com/born-ml/born/discussions/2)
+  - [Q&A](https://github.com/born-ml/born/discussions/3)
+  - [Feature Requests](https://github.com/born-ml/born/discussions/4)
+- **Issues**: [Report bugs or request features](https://github.com/born-ml/born/issues)
 
 ---
 
@@ -382,10 +405,10 @@ See [LICENSE](LICENSE) file for full terms.
 A: Gorgonia is great but uses a different approach. Born focuses on modern Go (generics), pure Go (no CGO), and production-first design inspired by Burn.
 
 **Q: When will it be ready?**
-A: Phase 1 (v0.1.1) and Phase 2 (v0.2.0 WebGPU) are RELEASED! ONNX support (Phase 3) targeted for Q1 2026.
+A: Core features (v0.1-v0.3) are RELEASED! Includes CPU/GPU backends and transformer primitives. ONNX import targeted for v0.5.0 (Q2 2026).
 
 **Q: Can I use PyTorch models?**
-A: Yes! Via ONNX import (Phase 3). Train in PyTorch, deploy with Born.
+A: Yes! Via ONNX import (v0.5.0, Q2 2026). Train in PyTorch, deploy with Born.
 
 **Q: WebAssembly support?**
 A: Yes! Pure Go compiles to WASM natively. Inference in browsers out of the box.

@@ -1,7 +1,7 @@
 # Born ML Framework - Use Cases Guide
 
-**Version**: v0.2.0
-**Updated**: 2025-11-28
+**Status**: Living Document
+**Last Updated**: 2025-11-30
 
 ---
 
@@ -179,7 +179,7 @@ func processBatch(inputs []Tensor) []Prediction {
 
 ---
 
-### 6. ONNX Model Deployment (Planned Phase 3)
+### 6. ONNX Model Deployment (Planned Feature)
 
 **Scenario:**
 Train models in PyTorch/TensorFlow, deploy with Born.
@@ -192,7 +192,7 @@ torch.onnx.export(model, "model.onnx")
 ```
 
 ```go
-// 2. Deploy with Born (Phase 3)
+// 2. Deploy with Born (upcoming ONNX support)
 model := born.LoadONNX("model.onnx")
 prediction := model.Predict(input)
 ```
@@ -209,29 +209,29 @@ prediction := model.Predict(input)
 ### 1. Large-Scale Distributed Training
 
 **Current limitation:**
-Born v0.2.0 doesn't support distributed training (planned Phase 4).
+Born doesn't yet support distributed training (planned for future releases).
 
 **Alternative:**
 - Train in PyTorch/TensorFlow (distributed)
-- Export via ONNX (Phase 3)
+- Export via ONNX (when available)
 - Deploy with Born
 
 **When Born will be ready:**
-- Phase 4 (Q2 2026): Distributed training support
+- Distributed training support planned for future releases
 
 ---
 
 ### 2. Latest Pre-Trained Models
 
 **Current limitation:**
-No model zoo yet (planned Phase 4).
+No model zoo yet (planned future releases).
 
 **Workaround:**
-- Use ONNX import (Phase 3)
+- Use ONNX import (upcoming ONNX support)
 - Port models manually (if simple)
 
 **When Born will be ready:**
-- Phase 4 (Q2 2026): Model zoo with popular architectures
+- future releases : Model zoo with popular architectures
 
 ---
 
@@ -261,13 +261,13 @@ No model zoo yet (planned Phase 4).
 
 **Current limitation:**
 - Conv2D basic (no optimizations yet)
-- No pre-trained ResNet/EfficientNet (Phase 4)
+- No pre-trained ResNet/EfficientNet (future releases)
 - No data augmentation library
 
 **Use Born when:**
 - Simple CNNs (MNIST-level)
 - Custom architectures
-- After Phase 3-4 (ONNX import + model zoo)
+- After upcoming releases (ONNX import + model zoo)
 
 ---
 
@@ -279,12 +279,13 @@ No model zoo yet (planned Phase 4).
 - No tokenizers
 
 **Roadmap:**
-- Phase 3: Transformer modules
-- Phase 4: Pre-trained BERT/GPT models (via ONNX)
+- ✅ Transformer primitives (available now!)
+- Attention mechanisms (in development)
+- Pre-trained models via ONNX import (planned)
 
 **Alternative now:**
 - Use ONNX Runtime (Go bindings)
-- Wait for Born Phase 3-4
+- Wait for Born upcoming releases
 
 ---
 
@@ -308,7 +309,7 @@ No model zoo yet (planned Phase 4).
 | Need latest pre-trained models NOW | ❌❌ |
 | Large-scale distributed training NOW | ❌❌ |
 | Python ecosystem critical | ❌❌❌ |
-| Complex CV/NLP NOW (wait Phase 3-4) | ⚠️ |
+| Complex CV/NLP NOW (wait upcoming releases) | ⚠️ |
 
 ---
 
@@ -316,13 +317,13 @@ No model zoo yet (planned Phase 4).
 
 ### From PyTorch to Born
 
-**Option 1: ONNX Import (Phase 3)**
+**Option 1: ONNX Import (upcoming ONNX support)**
 ```python
 # PyTorch
 torch.onnx.export(model, "model.onnx")
 ```
 ```go
-// Born (Phase 3)
+// Born (upcoming ONNX support)
 model := born.LoadONNX("model.onnx")
 ```
 
@@ -335,13 +336,13 @@ model := born.LoadONNX("model.onnx")
 
 ### From TensorFlow to Born
 
-**Option 1: ONNX Import (Phase 3)**
+**Option 1: ONNX Import (upcoming ONNX support)**
 ```python
 # TensorFlow
 tf2onnx.convert.from_keras(model, output_path="model.onnx")
 ```
 ```go
-// Born (Phase 3)
+// Born (upcoming ONNX support)
 model := born.LoadONNX("model.onnx")
 ```
 
@@ -416,7 +417,7 @@ model := born.LoadONNX("model.onnx")
 - CPU and GPU inference (WebGPU)
 - Go-native integration
 
-**Wait for Phase 3-4** if you need:
+**Wait for upcoming releases** if you need:
 - ONNX import
 - Pre-trained models
 - Vulkan/CUDA backends
@@ -429,19 +430,19 @@ model := born.LoadONNX("model.onnx")
 - **PyTorch**: Research, training, experimentation
 - **Born**: Production deployment, Go integration
 
-**Best practice:** Train in PyTorch → Deploy with Born (Phase 3+)
+**Best practice:** Train in PyTorch → Deploy with Born (when ONNX import available)
 
 ---
 
 ### Q: Is Born stable enough?
 
-**A:** v0.2.0 status:
-- ✅ API stable (tensor, nn, optim)
-- ✅ Production-tested (MNIST 97%+)
-- ✅ GPU acceleration (WebGPU, 123x MatMul speedup)
+**A:** Current status:
+- ✅ Core API stable (tensor, nn, optim, autodiff)
+- ✅ Production-tested (MNIST 97%+, GPU 123x speedup)
+- ✅ Transformer primitives (LLaMA, GPT, Mistral support)
 - ⚠️ API may evolve before v1.0
 
-**Recommendation:** Ready for production inference workloads. Wait for v0.3+ for ONNX import.
+**Recommendation:** Ready for production inference workloads. ONNX import planned for future release.
 
 ---
 
@@ -450,8 +451,8 @@ model := born.LoadONNX("model.onnx")
 If Born fits your use case:
 
 ```bash
-# Install
-go get github.com/born-ml/born@v0.2.0
+# Install (latest release)
+go get github.com/born-ml/born@latest
 
 # Example
 package main

@@ -27,6 +27,58 @@ type Backend interface {
 	Reshape(t *RawTensor, newShape Shape) *RawTensor
 	Transpose(t *RawTensor, axes ...int) *RawTensor
 
+	// Scalar operations (element-wise with scalar)
+	MulScalar(x *RawTensor, scalar any) *RawTensor // multiply by scalar
+	AddScalar(x *RawTensor, scalar any) *RawTensor // add scalar
+	SubScalar(x *RawTensor, scalar any) *RawTensor // subtract scalar
+	DivScalar(x *RawTensor, scalar any) *RawTensor // divide by scalar
+
+	// Math operations (element-wise)
+	Exp(x *RawTensor) *RawTensor   // exponential
+	Log(x *RawTensor) *RawTensor   // natural logarithm
+	Sqrt(x *RawTensor) *RawTensor  // square root
+	Rsqrt(x *RawTensor) *RawTensor // reciprocal square root (1/sqrt(x))
+	Cos(x *RawTensor) *RawTensor   // cosine
+	Sin(x *RawTensor) *RawTensor   // sine
+
+	// Activation functions
+	Softmax(x *RawTensor, dim int) *RawTensor // softmax along dimension
+
+	// Comparison operations (element-wise, return bool tensor)
+	Greater(a, b *RawTensor) *RawTensor      // a > b
+	Lower(a, b *RawTensor) *RawTensor        // a < b
+	GreaterEqual(a, b *RawTensor) *RawTensor // a >= b
+	LowerEqual(a, b *RawTensor) *RawTensor   // a <= b
+	Equal(a, b *RawTensor) *RawTensor        // a == b
+	NotEqual(a, b *RawTensor) *RawTensor     // a != b
+
+	// Boolean operations (element-wise on bool tensors)
+	Or(a, b *RawTensor) *RawTensor  // logical OR
+	And(a, b *RawTensor) *RawTensor // logical AND
+	Not(x *RawTensor) *RawTensor    // logical NOT
+
+	// Reduction operations
+	Sum(x *RawTensor) *RawTensor                            // total sum (scalar result)
+	SumDim(x *RawTensor, dim int, keepDim bool) *RawTensor  // sum along dimension
+	MeanDim(x *RawTensor, dim int, keepDim bool) *RawTensor // mean along dimension
+	Argmax(x *RawTensor, dim int) *RawTensor                // index of maximum value along dimension
+
+	// Manipulation operations
+	Cat(tensors []*RawTensor, dim int) *RawTensor // concatenate along dimension
+	Chunk(x *RawTensor, n, dim int) []*RawTensor  // split into n equal parts
+	Unsqueeze(x *RawTensor, dim int) *RawTensor   // add dimension of size 1
+	Squeeze(x *RawTensor, dim int) *RawTensor     // remove dimension of size 1
+
+	// Indexing operations
+	Gather(x *RawTensor, dim int, index *RawTensor) *RawTensor // select elements along dim using index tensor
+	Where(condition, x, y *RawTensor) *RawTensor               // conditional element selection
+
+	// Shape operations (broadcast)
+	Expand(x *RawTensor, shape Shape) *RawTensor // broadcast to shape
+
+	// Type conversion
+	Cast(x *RawTensor, dtype DataType) *RawTensor // cast to different data type
+
 	// Metadata
 	Name() string
 	Device() Device

@@ -130,12 +130,57 @@ func (b *Backend) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
 	return result
 }
 
-// Softmax applies softmax along the last dimension.
-// Expects 2D input [batch_size, num_classes].
-func (b *Backend) Softmax(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runSoftmax(x)
-	if err != nil {
-		panic("webgpu: Softmax: " + err.Error())
-	}
-	return result
+// Exp computes element-wise exponential (stub - not implemented for WebGPU yet).
+func (b *Backend) Exp(_ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: Exp not implemented yet (TASK-013)")
+}
+
+// Sqrt computes element-wise square root (stub - not implemented for WebGPU yet).
+func (b *Backend) Sqrt(_ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: Sqrt not implemented yet (TASK-013)")
+}
+
+// Rsqrt computes element-wise reciprocal square root (stub - not implemented for WebGPU yet).
+func (b *Backend) Rsqrt(_ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: Rsqrt not implemented yet (TASK-013)")
+}
+
+// Cos computes element-wise cosine (stub - not implemented for WebGPU yet).
+func (b *Backend) Cos(_ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: Cos not implemented yet (TASK-013)")
+}
+
+// Sin computes element-wise sine (stub - not implemented for WebGPU yet).
+func (b *Backend) Sin(_ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: Sin not implemented yet (TASK-013)")
+}
+
+// SumDim sums along a dimension (stub - not implemented for WebGPU yet).
+func (b *Backend) SumDim(_ *tensor.RawTensor, _ int, _ bool) *tensor.RawTensor {
+	panic("webgpu: SumDim not implemented yet (TASK-014)")
+}
+
+// MeanDim computes mean along a dimension (stub - not implemented for WebGPU yet).
+func (b *Backend) MeanDim(_ *tensor.RawTensor, _ int, _ bool) *tensor.RawTensor {
+	panic("webgpu: MeanDim not implemented yet (TASK-014)")
+}
+
+// Cat concatenates tensors (stub - not implemented for WebGPU yet).
+func (b *Backend) Cat(_ []*tensor.RawTensor, _ int) *tensor.RawTensor {
+	panic("webgpu: Cat not implemented yet (TASK-015)")
+}
+
+// Chunk splits tensor (stub - not implemented for WebGPU yet).
+func (b *Backend) Chunk(_ *tensor.RawTensor, _, _ int) []*tensor.RawTensor {
+	panic("webgpu: Chunk not implemented yet (TASK-015)")
+}
+
+// Unsqueeze adds dimension (stub - not implemented for WebGPU yet).
+func (b *Backend) Unsqueeze(_ *tensor.RawTensor, _ int) *tensor.RawTensor {
+	panic("webgpu: Unsqueeze not implemented yet (TASK-015)")
+}
+
+// Squeeze removes dimension (stub - not implemented for WebGPU yet).
+func (b *Backend) Squeeze(_ *tensor.RawTensor, _ int) *tensor.RawTensor {
+	panic("webgpu: Squeeze not implemented yet (TASK-015)")
 }

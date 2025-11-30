@@ -1,7 +1,10 @@
 // Package tensor provides the core tensor types and operations for Born ML framework.
 package tensor
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // Verify that MockBackend implements Backend.
 var _ Backend = (*MockBackend)(nil)
@@ -414,4 +417,890 @@ func (m *MockBackend) broadcastIndex(flatIdx int, outShape, inShape Shape) int {
 	}
 
 	return inIdx
+}
+
+// Exp computes element-wise exponential.
+func (m *MockBackend) Exp(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, math.Exp)
+}
+
+// Sqrt computes element-wise square root.
+func (m *MockBackend) Sqrt(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, func(v float64) float64 {
+		if v < 0 {
+			panic(fmt.Sprintf("sqrt: negative value %f", v))
+		}
+		return math.Sqrt(v)
+	})
+}
+
+// Rsqrt computes element-wise reciprocal square root.
+func (m *MockBackend) Rsqrt(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, func(v float64) float64 {
+		if v <= 0 {
+			panic(fmt.Sprintf("rsqrt: non-positive value %f", v))
+		}
+		return 1.0 / math.Sqrt(v)
+	})
+}
+
+// Cos computes element-wise cosine.
+func (m *MockBackend) Cos(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, math.Cos)
+}
+
+// Sin computes element-wise sine.
+func (m *MockBackend) Sin(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, math.Sin)
+}
+
+// unaryOp applies a unary operation element-wise.
+func (m *MockBackend) unaryOp(x *RawTensor, op func(float64) float64) *RawTensor {
+	result, err := NewRaw(x.Shape(), x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	resultData := m.toFloat64Slice(result)
+
+	for i := range xData {
+		resultData[i] = op(xData[i])
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// SumDim sums tensor elements along the specified dimension (naive implementation).
+func (m *MockBackend) SumDim(x *RawTensor, dim int, keepDim bool) *RawTensor {
+	shape := x.Shape()
+	ndim := len(shape)
+
+	// Normalize negative dimension
+	if dim < 0 {
+		dim = ndim + dim
+	}
+
+	// Validate dimension
+	if dim < 0 || dim >= ndim {
+		panic(fmt.Sprintf("sumdim: dimension %d out of range for %dD tensor", dim, ndim))
+	}
+
+	// Calculate output shape
+	var outShape Shape
+	if keepDim {
+		outShape = shape.Clone()
+		outShape[dim] = 1
+	} else {
+		outShape = make(Shape, 0, ndim-1)
+		for i := 0; i < ndim; i++ {
+			if i != dim {
+				outShape = append(outShape, shape[i])
+			}
+		}
+	}
+
+	result, err := NewRaw(outShape, x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	resultData := m.toFloat64Slice(result)
+
+	// Initialize result to zero
+	for i := range resultData {
+		resultData[i] = 0
+	}
+
+	// Calculate strides
+	strides := shape.ComputeStrides()
+	outShapeWithDim := shape.Clone()
+	outShapeWithDim[dim] = 1
+	outStrides := outShapeWithDim.ComputeStrides()
+
+	// Sum along dimension
+	for i := 0; i < len(xData); i++ {
+		// Compute output index
+		outIdx := 0
+		temp := i
+		for d := 0; d < ndim; d++ {
+			coord := temp / strides[d]
+			temp %= strides[d]
+
+			if d != dim {
+				outIdx += coord * outStrides[d]
+			}
+		}
+
+		resultData[outIdx] += xData[i]
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// MeanDim computes the mean of tensor elements along the specified dimension.
+func (m *MockBackend) MeanDim(x *RawTensor, dim int, keepDim bool) *RawTensor {
+	// Sum along dimension
+	sumResult := m.SumDim(x, dim, keepDim)
+
+	// Normalize negative dimension
+	shape := x.Shape()
+	ndim := len(shape)
+	if dim < 0 {
+		dim = ndim + dim
+	}
+
+	// Divide by the size of the reduced dimension
+	divisor := float64(shape[dim])
+	sumData := m.toFloat64Slice(sumResult)
+	for i := range sumData {
+		sumData[i] /= divisor
+	}
+
+	m.fromFloat64Slice(sumData, sumResult)
+	return sumResult
+}
+
+// Cat concatenates tensors along the specified dimension (naive implementation).
+func (m *MockBackend) Cat(tensors []*RawTensor, dim int) *RawTensor {
+	if len(tensors) == 0 {
+		panic("cat: at least one tensor required")
+	}
+
+	shape := tensors[0].Shape()
+	ndim := len(shape)
+	dtype := tensors[0].DType()
+
+	// Normalize negative dimension
+	if dim < 0 {
+		dim = ndim + dim
+	}
+
+	// Validate dimension
+	if dim < 0 || dim >= ndim {
+		panic(fmt.Sprintf("cat: dimension %d out of range for %dD tensor", dim, ndim))
+	}
+
+	// Validate shapes and calculate total size
+	totalDim := 0
+	for i, t := range tensors {
+		tShape := t.Shape()
+		if len(tShape) != ndim {
+			panic(fmt.Sprintf("cat: tensor %d has %d dimensions, expected %d", i, len(tShape), ndim))
+		}
+		if t.DType() != dtype {
+			panic(fmt.Sprintf("cat: tensor %d has dtype %s, expected %s", i, t.DType(), dtype))
+		}
+
+		for d := 0; d < ndim; d++ {
+			if d == dim {
+				totalDim += tShape[d]
+			} else if tShape[d] != shape[d] {
+				panic(fmt.Sprintf("cat: tensor %d dimension %d is %d, expected %d", i, d, tShape[d], shape[d]))
+			}
+		}
+	}
+
+	// Create output shape
+	outShape := shape.Clone()
+	outShape[dim] = totalDim
+
+	result, err := NewRaw(outShape, dtype, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	// Concatenate data
+	resultData := m.toFloat64Slice(result)
+	outStrides := outShape.ComputeStrides()
+
+	offset := 0
+	for _, t := range tensors {
+		tData := m.toFloat64Slice(t)
+		tShape := t.Shape()
+		tStrides := tShape.ComputeStrides()
+
+		for i := 0; i < len(tData); i++ {
+			// Compute multi-dimensional index
+			outIdx := 0
+			temp := i
+			for d := 0; d < ndim; d++ {
+				coord := temp / tStrides[d]
+				temp %= tStrides[d]
+
+				if d == dim {
+					coord += offset
+				}
+				outIdx += coord * outStrides[d]
+			}
+
+			resultData[outIdx] = tData[i]
+		}
+
+		offset += tShape[dim]
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// Chunk splits tensor into n equal parts along the specified dimension.
+func (m *MockBackend) Chunk(x *RawTensor, n, dim int) []*RawTensor {
+	if n <= 0 {
+		panic(fmt.Sprintf("chunk: n must be positive, got %d", n))
+	}
+
+	shape := x.Shape()
+	ndim := len(shape)
+
+	// Normalize negative dimension
+	if dim < 0 {
+		dim = ndim + dim
+	}
+
+	// Validate dimension
+	if dim < 0 || dim >= ndim {
+		panic(fmt.Sprintf("chunk: dimension %d out of range for %dD tensor", dim, ndim))
+	}
+
+	dimSize := shape[dim]
+	if dimSize%n != 0 {
+		panic(fmt.Sprintf("chunk: dimension %d size %d not divisible by %d", dim, dimSize, n))
+	}
+
+	chunkSize := dimSize / n
+	chunkShape := shape.Clone()
+	chunkShape[dim] = chunkSize
+
+	// Create result tensors
+	results := make([]*RawTensor, n)
+	for i := 0; i < n; i++ {
+		chunk, err := NewRaw(chunkShape, x.DType(), m.Device())
+		if err != nil {
+			panic(err)
+		}
+		results[i] = chunk
+	}
+
+	// Split data
+	xData := m.toFloat64Slice(x)
+	strides := shape.ComputeStrides()
+
+	for i := 0; i < len(xData); i++ {
+		// Compute multi-dimensional index
+		temp := i
+		coords := make([]int, ndim)
+		for d := 0; d < ndim; d++ {
+			coords[d] = temp / strides[d]
+			temp %= strides[d]
+		}
+
+		// Determine chunk
+		chunkIdx := coords[dim] / chunkSize
+		localCoord := coords[dim] % chunkSize
+
+		// Compute output index
+		outStrides := chunkShape.ComputeStrides()
+		outIdx := 0
+		for d := 0; d < ndim; d++ {
+			if d == dim {
+				outIdx += localCoord * outStrides[d]
+			} else {
+				outIdx += coords[d] * outStrides[d]
+			}
+		}
+
+		chunkData := m.toFloat64Slice(results[chunkIdx])
+		chunkData[outIdx] = xData[i]
+		m.fromFloat64Slice(chunkData, results[chunkIdx])
+	}
+
+	return results
+}
+
+// Unsqueeze adds a dimension of size 1 at the specified position.
+func (m *MockBackend) Unsqueeze(x *RawTensor, dim int) *RawTensor {
+	shape := x.Shape()
+	ndim := len(shape)
+
+	// Normalize negative dimension
+	if dim < 0 {
+		dim = ndim + 1 + dim
+	}
+
+	// Validate dimension
+	if dim < 0 || dim > ndim {
+		panic(fmt.Sprintf("unsqueeze: dimension %d out of range for %dD tensor (valid: [0, %d])", dim, ndim, ndim))
+	}
+
+	// Create new shape
+	newShape := make(Shape, ndim+1)
+	for i := 0; i < dim; i++ {
+		newShape[i] = shape[i]
+	}
+	newShape[dim] = 1
+	for i := dim; i < ndim; i++ {
+		newShape[i+1] = shape[i]
+	}
+
+	return m.Reshape(x, newShape)
+}
+
+// Squeeze removes a dimension of size 1 at the specified position.
+func (m *MockBackend) Squeeze(x *RawTensor, dim int) *RawTensor {
+	shape := x.Shape()
+	ndim := len(shape)
+
+	// Normalize negative dimension
+	if dim < 0 {
+		dim = ndim + dim
+	}
+
+	// Validate dimension
+	if dim < 0 || dim >= ndim {
+		panic(fmt.Sprintf("squeeze: dimension %d out of range for %dD tensor", dim, ndim))
+	}
+
+	if shape[dim] != 1 {
+		panic(fmt.Sprintf("squeeze: dimension %d has size %d, must be 1", dim, shape[dim]))
+	}
+
+	// Create new shape
+	newShape := make(Shape, 0, ndim-1)
+	for i := 0; i < ndim; i++ {
+		if i != dim {
+			newShape = append(newShape, shape[i])
+		}
+	}
+
+	return m.Reshape(x, newShape)
+}
+
+// Gather selects elements along dim using index tensor (naive implementation).
+func (m *MockBackend) Gather(x *RawTensor, dim int, index *RawTensor) *RawTensor {
+	if index.DType() != Int32 {
+		panic(fmt.Sprintf("gather: index must be int32, got %s", index.DType()))
+	}
+
+	shape := x.Shape()
+	ndim := len(shape)
+
+	// Normalize negative dimension
+	if dim < 0 {
+		dim = ndim + dim
+	}
+
+	// Validate dimension
+	if dim < 0 || dim >= ndim {
+		panic(fmt.Sprintf("gather: dimension %d out of range for %dD tensor", dim, ndim))
+	}
+
+	indexShape := index.Shape()
+	if len(indexShape) != ndim {
+		panic(fmt.Sprintf("gather: index rank %d != input rank %d", len(indexShape), ndim))
+	}
+
+	// Validate index shape
+	for i := 0; i < ndim; i++ {
+		if i != dim && indexShape[i] != shape[i] {
+			panic(fmt.Sprintf("gather: index shape mismatch at dim %d: %d != %d", i, indexShape[i], shape[i]))
+		}
+	}
+
+	// Create result
+	result, err := NewRaw(indexShape, x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	resultData := m.toFloat64Slice(result)
+	indices := index.AsInt32()
+
+	strides := shape.ComputeStrides()
+	indexStrides := indexShape.ComputeStrides()
+
+	for i := 0; i < len(resultData); i++ {
+		// Compute multi-dimensional index
+		coords := make([]int, ndim)
+		temp := i
+		for d := 0; d < ndim; d++ {
+			coords[d] = temp / indexStrides[d]
+			temp %= indexStrides[d]
+		}
+
+		// Get index value
+		idx := int(indices[i])
+		if idx < 0 || idx >= shape[dim] {
+			panic(fmt.Sprintf("gather: index %d out of bounds [0, %d)", idx, shape[dim]))
+		}
+
+		// Compute source index
+		srcIdx := 0
+		for d := 0; d < ndim; d++ {
+			if d == dim {
+				srcIdx += idx * strides[d]
+			} else {
+				srcIdx += coords[d] * strides[d]
+			}
+		}
+
+		resultData[i] = xData[srcIdx]
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// Where performs conditional element selection (naive implementation).
+func (m *MockBackend) Where(condition, x, y *RawTensor) *RawTensor {
+	if condition.DType() != Bool && condition.DType() != Uint8 {
+		panic(fmt.Sprintf("where: condition must be bool or uint8, got %s", condition.DType()))
+	}
+
+	if x.DType() != y.DType() {
+		panic(fmt.Sprintf("where: x and y must have same dtype, got %s and %s", x.DType(), y.DType()))
+	}
+
+	// Broadcast all three shapes
+	outShape1, _, err := BroadcastShapes(condition.Shape(), x.Shape())
+	if err != nil {
+		panic(fmt.Sprintf("where: failed to broadcast condition and x: %v", err))
+	}
+	outShape, _, err := BroadcastShapes(outShape1, y.Shape())
+	if err != nil {
+		panic(fmt.Sprintf("where: failed to broadcast with y: %v", err))
+	}
+
+	result, err := NewRaw(outShape, x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	// Get condition data as uint8
+	var condData []uint8
+	if condition.DType() == Bool {
+		boolData := condition.AsBool()
+		condData = make([]uint8, len(boolData))
+		for i, b := range boolData {
+			if b {
+				condData[i] = 1
+			}
+		}
+	} else {
+		condData = condition.AsUint8()
+	}
+
+	xData := m.toFloat64Slice(x)
+	yData := m.toFloat64Slice(y)
+	resultData := m.toFloat64Slice(result)
+
+	for i := 0; i < len(resultData); i++ {
+		condIdx := m.broadcastIndex(i, outShape, condition.Shape())
+		xIdx := m.broadcastIndex(i, outShape, x.Shape())
+		yIdx := m.broadcastIndex(i, outShape, y.Shape())
+
+		if condData[condIdx] != 0 {
+			resultData[i] = xData[xIdx]
+		} else {
+			resultData[i] = yData[yIdx]
+		}
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// Scalar operations (naive implementations).
+
+// MulScalar multiplies tensor elements by a scalar (mock implementation).
+func (m *MockBackend) MulScalar(x *RawTensor, scalar any) *RawTensor {
+	result, err := NewRaw(x.Shape(), x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	resultData := m.toFloat64Slice(result)
+	scalarVal := m.anyToFloat64(scalar)
+
+	for i := range resultData {
+		resultData[i] = xData[i] * scalarVal
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// AddScalar adds a scalar to tensor elements (mock implementation).
+func (m *MockBackend) AddScalar(x *RawTensor, scalar any) *RawTensor {
+	result, err := NewRaw(x.Shape(), x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	resultData := m.toFloat64Slice(result)
+	scalarVal := m.anyToFloat64(scalar)
+
+	for i := range resultData {
+		resultData[i] = xData[i] + scalarVal
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// SubScalar subtracts a scalar from tensor elements (mock implementation).
+func (m *MockBackend) SubScalar(x *RawTensor, scalar any) *RawTensor {
+	result, err := NewRaw(x.Shape(), x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	resultData := m.toFloat64Slice(result)
+	scalarVal := m.anyToFloat64(scalar)
+
+	for i := range resultData {
+		resultData[i] = xData[i] - scalarVal
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// DivScalar divides tensor elements by a scalar (mock implementation).
+func (m *MockBackend) DivScalar(x *RawTensor, scalar any) *RawTensor {
+	result, err := NewRaw(x.Shape(), x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	resultData := m.toFloat64Slice(result)
+	scalarVal := m.anyToFloat64(scalar)
+
+	for i := range resultData {
+		resultData[i] = xData[i] / scalarVal
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
+// Math operations.
+
+// Log computes natural logarithm element-wise (mock implementation).
+func (m *MockBackend) Log(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, math.Log)
+}
+
+// Activation functions.
+
+// Softmax applies softmax activation along the specified dimension (mock stub).
+func (m *MockBackend) Softmax(_ *RawTensor, _ int) *RawTensor {
+	panic("mock: Softmax not implemented (use CPU backend)")
+}
+
+// Comparison operations (return bool tensor).
+
+// Greater performs element-wise greater-than comparison (mock implementation).
+func (m *MockBackend) Greater(a, b *RawTensor) *RawTensor {
+	outShape, _, err := BroadcastShapes(a.Shape(), b.Shape())
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := NewRaw(outShape, Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := m.toFloat64Slice(a)
+	bData := m.toFloat64Slice(b)
+	resultBool := result.AsBool()
+
+	for i := 0; i < len(resultBool); i++ {
+		aIdx := m.broadcastIndex(i, outShape, a.Shape())
+		bIdx := m.broadcastIndex(i, outShape, b.Shape())
+		resultBool[i] = aData[aIdx] > bData[bIdx]
+	}
+
+	return result
+}
+
+// Lower performs element-wise less-than comparison (mock implementation).
+func (m *MockBackend) Lower(a, b *RawTensor) *RawTensor {
+	outShape, _, err := BroadcastShapes(a.Shape(), b.Shape())
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := NewRaw(outShape, Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := m.toFloat64Slice(a)
+	bData := m.toFloat64Slice(b)
+	resultBool := result.AsBool()
+
+	for i := 0; i < len(resultBool); i++ {
+		aIdx := m.broadcastIndex(i, outShape, a.Shape())
+		bIdx := m.broadcastIndex(i, outShape, b.Shape())
+		resultBool[i] = aData[aIdx] < bData[bIdx]
+	}
+
+	return result
+}
+
+// GreaterEqual performs element-wise greater-than-or-equal comparison (mock implementation).
+func (m *MockBackend) GreaterEqual(a, b *RawTensor) *RawTensor {
+	outShape, _, err := BroadcastShapes(a.Shape(), b.Shape())
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := NewRaw(outShape, Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := m.toFloat64Slice(a)
+	bData := m.toFloat64Slice(b)
+	resultBool := result.AsBool()
+
+	for i := 0; i < len(resultBool); i++ {
+		aIdx := m.broadcastIndex(i, outShape, a.Shape())
+		bIdx := m.broadcastIndex(i, outShape, b.Shape())
+		resultBool[i] = aData[aIdx] >= bData[bIdx]
+	}
+
+	return result
+}
+
+// LowerEqual performs element-wise less-than-or-equal comparison (mock implementation).
+func (m *MockBackend) LowerEqual(a, b *RawTensor) *RawTensor {
+	outShape, _, err := BroadcastShapes(a.Shape(), b.Shape())
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := NewRaw(outShape, Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := m.toFloat64Slice(a)
+	bData := m.toFloat64Slice(b)
+	resultBool := result.AsBool()
+
+	for i := 0; i < len(resultBool); i++ {
+		aIdx := m.broadcastIndex(i, outShape, a.Shape())
+		bIdx := m.broadcastIndex(i, outShape, b.Shape())
+		resultBool[i] = aData[aIdx] <= bData[bIdx]
+	}
+
+	return result
+}
+
+// Equal performs element-wise equality comparison (mock implementation).
+func (m *MockBackend) Equal(a, b *RawTensor) *RawTensor {
+	outShape, _, err := BroadcastShapes(a.Shape(), b.Shape())
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := NewRaw(outShape, Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := m.toFloat64Slice(a)
+	bData := m.toFloat64Slice(b)
+	resultBool := result.AsBool()
+
+	for i := 0; i < len(resultBool); i++ {
+		aIdx := m.broadcastIndex(i, outShape, a.Shape())
+		bIdx := m.broadcastIndex(i, outShape, b.Shape())
+		resultBool[i] = aData[aIdx] == bData[bIdx]
+	}
+
+	return result
+}
+
+// NotEqual performs element-wise inequality comparison (mock implementation).
+func (m *MockBackend) NotEqual(a, b *RawTensor) *RawTensor {
+	outShape, _, err := BroadcastShapes(a.Shape(), b.Shape())
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := NewRaw(outShape, Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := m.toFloat64Slice(a)
+	bData := m.toFloat64Slice(b)
+	resultBool := result.AsBool()
+
+	for i := 0; i < len(resultBool); i++ {
+		aIdx := m.broadcastIndex(i, outShape, a.Shape())
+		bIdx := m.broadcastIndex(i, outShape, b.Shape())
+		resultBool[i] = aData[aIdx] != bData[bIdx]
+	}
+
+	return result
+}
+
+// Boolean operations.
+
+// Or performs element-wise logical OR operation (mock implementation).
+func (m *MockBackend) Or(a, b *RawTensor) *RawTensor {
+	outShape, _, err := BroadcastShapes(a.Shape(), b.Shape())
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := NewRaw(outShape, Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := a.AsBool()
+	bData := b.AsBool()
+	resultBool := result.AsBool()
+
+	for i := 0; i < len(resultBool); i++ {
+		aIdx := m.broadcastIndex(i, outShape, a.Shape())
+		bIdx := m.broadcastIndex(i, outShape, b.Shape())
+		resultBool[i] = aData[aIdx] || bData[bIdx]
+	}
+
+	return result
+}
+
+// And performs element-wise logical AND operation (mock implementation).
+func (m *MockBackend) And(a, b *RawTensor) *RawTensor {
+	outShape, _, err := BroadcastShapes(a.Shape(), b.Shape())
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := NewRaw(outShape, Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := a.AsBool()
+	bData := b.AsBool()
+	resultBool := result.AsBool()
+
+	for i := 0; i < len(resultBool); i++ {
+		aIdx := m.broadcastIndex(i, outShape, a.Shape())
+		bIdx := m.broadcastIndex(i, outShape, b.Shape())
+		resultBool[i] = aData[aIdx] && bData[bIdx]
+	}
+
+	return result
+}
+
+// Not performs element-wise logical NOT operation (mock implementation).
+func (m *MockBackend) Not(x *RawTensor) *RawTensor {
+	result, err := NewRaw(x.Shape(), Bool, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := x.AsBool()
+	resultBool := result.AsBool()
+
+	for i := range resultBool {
+		resultBool[i] = !xData[i]
+	}
+
+	return result
+}
+
+// Reduction operations.
+
+// Sum computes the total sum of all tensor elements (mock implementation).
+func (m *MockBackend) Sum(x *RawTensor) *RawTensor {
+	result, err := NewRaw(Shape{}, x.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	var sum float64
+	for _, v := range xData {
+		sum += v
+	}
+
+	resultData := m.toFloat64Slice(result)
+	resultData[0] = sum
+	m.fromFloat64Slice(resultData, result)
+
+	return result
+}
+
+// Argmax returns indices of maximum values along the specified dimension (mock stub).
+func (m *MockBackend) Argmax(_ *RawTensor, _ int) *RawTensor {
+	panic("mock: Argmax not implemented (use CPU backend)")
+}
+
+// Shape operations.
+
+// Expand broadcasts the tensor to a new shape (mock stub).
+func (m *MockBackend) Expand(_ *RawTensor, _ Shape) *RawTensor {
+	panic("mock: Expand not implemented (use CPU backend)")
+}
+
+// Type conversion.
+
+// Cast converts the tensor to a different data type (mock implementation).
+func (m *MockBackend) Cast(x *RawTensor, dtype DataType) *RawTensor {
+	if x.DType() == dtype {
+		return x
+	}
+
+	result, err := NewRaw(x.Shape(), dtype, m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	xData := m.toFloat64Slice(x)
+	resultData := m.toFloat64Slice(result)
+	copy(resultData, xData)
+	m.fromFloat64Slice(resultData, result)
+
+	return result
+}
+
+// Helper to convert any scalar to float64.
+func (m *MockBackend) anyToFloat64(v any) float64 {
+	switch val := v.(type) {
+	case float32:
+		return float64(val)
+	case float64:
+		return val
+	case int32:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case uint8:
+		return float64(val)
+	case bool:
+		if val {
+			return 1.0
+		}
+		return 0.0
+	default:
+		panic(fmt.Sprintf("anyToFloat64: unsupported type %T", v))
+	}
 }

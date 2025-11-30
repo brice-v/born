@@ -411,7 +411,7 @@ func TestSoftmax(t *testing.T) {
 	// Test case: Softmax([[1, 2, 3], [1, 1, 1]]) - should sum to 1 per row
 	x := createTensor(t, tensor.Shape{2, 3}, []float32{1, 2, 3, 1, 1, 1})
 
-	result := backend.Softmax(x)
+	result := backend.Softmax(x, -1)
 	actual := extractData(t, result)
 
 	// Check that each row sums to 1

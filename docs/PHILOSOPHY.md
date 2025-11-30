@@ -1,7 +1,7 @@
 # Born ML Framework - Philosophy & Design Principles
 
-**Version**: v0.2.0
-**Updated**: 2025-11-28
+**Status**: Living Document
+**Last Updated**: 2025-11-30
 
 ---
 
@@ -133,7 +133,7 @@ Born adapts these concepts for Go ecosystem.
 | **Cross-compilation** | Trivial ✅ | Complex ⚠️ |
 | **Startup time** | < 100ms ✅ | Slower ⚠️ |
 | **Generics** | Go 1.25+ ✅ | Go 1.18+ ✅ |
-| **Maturity** | Early (v0.1) ⚠️ | More mature ✅ |
+| **Maturity** | Early development ⚠️ | More mature ✅ |
 
 ### Born vs Gorgonia
 
@@ -210,29 +210,45 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 ## Roadmap Alignment
 
-### Phase 1 (v0.1.0 - v0.1.1) ✅ COMPLETE
+### Phase 1: Core Framework ✅ COMPLETE
 - Pure Go tensor operations
 - CPU backend
 - Autodiff engine
-- Basic NN modules
+- Basic NN modules (Linear, Conv2D, Activations)
 - SGD/Adam optimizers
 
-### Phase 2 (v0.2.0) ✅ COMPLETE
+### Phase 2: GPU Acceleration ✅ COMPLETE
 - WebGPU backend (zero-CGO via go-webgpu)
-- WGSL compute shaders (12 operations)
+- WGSL compute shaders
 - GPU buffer pooling & memory management
 - 123x MatMul speedup, 10.9x inference speedup
 
-### Phase 3 (Q1 2026) - Model Import/Export
-- ONNX import (PyTorch/TF models)
-- ONNX export (Born models)
-- Vulkan/CUDA backends
-- Quantization (INT8, FP16)
+### Phase 2.5: Transformer Primitives ✅ COMPLETE
+- Math operations (Exp, Sqrt, Rsqrt, Cos, Sin)
+- Reductions (SumDim, MeanDim)
+- Manipulation (Cat, Chunk, Unsqueeze, Squeeze)
+- Modern layers (SiLU, RMSNorm, Embedding)
+- LLaMA/GPT/Mistral architecture support
 
-### Phase 4 (Q2 2026) - Production Features
-- Metal backend (macOS/iOS)
-- Model zoo (pre-trained models)
+### Phase 3: Attention Mechanisms - In Progress
+- Multi-head attention (MHA)
+- Scaled dot-product attention
+- KV-cache for efficient inference
+- Layer normalization variants
+
+### Phase 4: Cross-Platform & ONNX - Planned
+- Linux/macOS WebGPU support
+- ONNX import (PyTorch/TF models)
+- Model quantization (INT8, FP16)
+- Pre-trained model loading
+
+### Long-Term: Production Features
+- Training utilities (BatchNorm, Dropout)
 - Distributed training
+- Advanced optimizations
+- Model zoo
+
+**See [ROADMAP.md](../ROADMAP.md) for detailed timeline and milestones.**
 
 ---
 

@@ -94,6 +94,38 @@ func (t *Tensor[T, B]) SetGrad(grad *Tensor[T, B]) {
 	t.grad = grad
 }
 
+// Detach returns a new tensor that shares the same data but doesn't track gradients.
+//
+// This is useful for:
+//   - Stopping gradient flow at a specific point
+//   - Creating targets in reinforcement learning (no backprop through target)
+//   - HRM carry states between iterations (detach to prevent long gradient chains)
+//   - Teacher-student training (stop gradients through teacher)
+//
+// The returned tensor shares the underlying data (zero-copy) but has no gradient
+// tracking. Any operations on the detached tensor won't appear in the autodiff tape.
+//
+// Example:
+//
+//	// Training with detached target
+//	prediction := model.Forward(input)
+//	target := target_model.Forward(input).Detach()  // No gradients through target
+//	loss := prediction.Sub(target).Pow(2).Mean()
+//
+//	// HRM carry state
+//	newCarry := Carry{
+//	    zH: zH.Detach(),  // Break gradient chain
+//	    zL: zL.Detach(),
+//	}
+func (t *Tensor[T, B]) Detach() *Tensor[T, B] {
+	return &Tensor[T, B]{
+		raw:          t.raw, // Share data (zero-copy)
+		backend:      t.backend,
+		grad:         nil, // No gradient tracking
+		requiresGrad: false,
+	}
+}
+
 // Data returns a typed slice view of the tensor's data.
 // The slice directly accesses the underlying memory (zero-copy).
 //

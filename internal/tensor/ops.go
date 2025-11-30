@@ -85,3 +85,35 @@ func (t *Tensor[T, B]) T() *Tensor[T, B] {
 	}
 	return t.Transpose(1, 0)
 }
+
+// SumDim sums tensor elements along the specified dimension.
+//
+// Parameters:
+//   - dim: dimension to reduce (supports negative indexing: -1 = last dim)
+//   - keepDim: if true, keep the reduced dimension with size 1; if false, remove it
+//
+// Example:
+//
+//	x := tensor.Randn[float32](Shape{2, 3, 4}, backend)
+//	y := x.SumDim(-1, true)   // shape: [2, 3, 1]
+//	z := x.SumDim(-1, false)  // shape: [2, 3]
+func (t *Tensor[T, B]) SumDim(dim int, keepDim bool) *Tensor[T, B] {
+	result := t.backend.SumDim(t.raw, dim, keepDim)
+	return New[T, B](result, t.backend)
+}
+
+// MeanDim computes the mean of tensor elements along the specified dimension.
+//
+// Parameters:
+//   - dim: dimension to reduce (supports negative indexing: -1 = last dim)
+//   - keepDim: if true, keep the reduced dimension with size 1; if false, remove it
+//
+// Example:
+//
+//	x := tensor.Randn[float32](Shape{2, 3, 4}, backend)
+//	y := x.MeanDim(-1, true)   // shape: [2, 3, 1]
+//	z := x.MeanDim(-1, false)  // shape: [2, 3]
+func (t *Tensor[T, B]) MeanDim(dim int, keepDim bool) *Tensor[T, B] {
+	result := t.backend.MeanDim(t.raw, dim, keepDim)
+	return New[T, B](result, t.backend)
+}

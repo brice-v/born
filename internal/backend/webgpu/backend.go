@@ -281,3 +281,13 @@ func (b *Backend) trackBufferRelease(size uint64) {
 	}
 	b.memoryStats.activeBuffers--
 }
+
+// Gather selects elements along dim using index tensor (not implemented yet).
+func (b *Backend) Gather(_ *tensor.RawTensor, _ int, _ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: Gather not implemented yet - TODO(TASK-016)")
+}
+
+// Where performs conditional element selection (not implemented yet).
+func (b *Backend) Where(_, _, _ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: Where not implemented yet - TODO(TASK-016)")
+}

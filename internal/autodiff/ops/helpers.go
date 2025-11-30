@@ -229,3 +229,29 @@ func negateGradient(grad *tensor.RawTensor, backend tensor.Backend) *tensor.RawT
 	// Return 0 - grad
 	return backend.Sub(zeros, grad)
 }
+
+// createScalar creates a tensor filled with a scalar value.
+func createScalar(shape tensor.Shape, dtype tensor.DataType, value float64, device tensor.Device) *tensor.RawTensor {
+	result, err := tensor.NewRaw(shape, dtype, device)
+	if err != nil {
+		panic(fmt.Sprintf("createScalar: %v", err))
+	}
+
+	switch dtype {
+	case tensor.Float32:
+		data := result.AsFloat32()
+		val := float32(value)
+		for i := range data {
+			data[i] = val
+		}
+	case tensor.Float64:
+		data := result.AsFloat64()
+		for i := range data {
+			data[i] = value
+		}
+	default:
+		panic(fmt.Sprintf("createScalar: unsupported dtype %s", dtype))
+	}
+
+	return result
+}
