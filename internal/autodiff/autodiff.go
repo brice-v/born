@@ -25,6 +25,7 @@
 package autodiff
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/born-ml/born/internal/autodiff/ops"
@@ -776,7 +777,7 @@ func (b *AutodiffBackend[B]) Cast(x *tensor.RawTensor, dtype tensor.DataType) *t
 	return b.inner.Cast(x, dtype)
 }
 
-// Cat concatenates tensors along a dimension (passthrough - no autodiff yet).
+// Cat concatenates tensors along a dimension.
 func (b *AutodiffBackend[B]) Cat(tensors []*tensor.RawTensor, dim int) *tensor.RawTensor {
 	// Mark all inputs as non-unique for safety
 	//nolint:gocritic // defer in loop is intentional for cleanup of all inputs
@@ -784,50 +785,166 @@ func (b *AutodiffBackend[B]) Cat(tensors []*tensor.RawTensor, dim int) *tensor.R
 		defer t.ForceNonUnique()()
 	}
 
-	// TODO(TASK-015): Implement CatOp for gradient computation
-	// For now, passthrough to inner backend
-	return b.inner.Cat(tensors, dim)
+	// Perform forward pass
+	result := b.inner.Cat(tensors, dim)
+
+	// Record operation for gradient computation
+	if b.tape.IsRecording() {
+		// Normalize dimension and compute sizes
+		ndim := len(tensors[0].Shape())
+		normalizedDim := dim
+		if normalizedDim < 0 {
+			normalizedDim = ndim + normalizedDim
+		}
+
+		sizes := make([]int, len(tensors))
+		for i, t := range tensors {
+			sizes[i] = t.Shape()[normalizedDim]
+		}
+
+		op := ops.NewCatOp(tensors, normalizedDim, sizes, result)
+		b.tape.Record(op)
+	}
+
+	return result
 }
 
-// Chunk splits tensor into equal parts (passthrough - no autodiff yet).
+// Chunk splits tensor into equal parts.
+// Note: Multi-output operation - gradient computation requires special handling.
 func (b *AutodiffBackend[B]) Chunk(x *tensor.RawTensor, n, dim int) []*tensor.RawTensor {
 	defer x.ForceNonUnique()()
 
-	// TODO(TASK-015): Implement ChunkOp for gradient computation
-	// For now, passthrough to inner backend
-	return b.inner.Chunk(x, n, dim)
+	// Perform forward pass
+	results := b.inner.Chunk(x, n, dim)
+
+	// Record operation for gradient computation
+	// Note: ChunkOp is a multi-output operation.
+	// The tape needs to handle this specially since the Operation interface
+	// expects a single output.
+	if b.tape.IsRecording() {
+		// Normalize dimension
+		ndim := len(x.Shape())
+		normalizedDim := dim
+		if normalizedDim < 0 {
+			normalizedDim = ndim + normalizedDim
+		}
+
+		op := ops.NewChunkOp(x, n, normalizedDim, results)
+		b.tape.Record(op)
+	}
+
+	return results
 }
 
-// Unsqueeze adds a dimension (recorded via Reshape).
+// Unsqueeze adds a dimension of size 1 at the specified position.
+// Recorded via Reshape for proper gradient flow.
 func (b *AutodiffBackend[B]) Unsqueeze(x *tensor.RawTensor, dim int) *tensor.RawTensor {
-	// Unsqueeze is just a reshape operation, so use Reshape which is already recorded
-	return b.inner.Unsqueeze(x, dim)
+	oldShape := x.Shape()
+	ndim := len(oldShape)
+
+	// Normalize negative dimension (for unsqueeze, we can insert at ndim+1 positions)
+	if dim < 0 {
+		dim = ndim + 1 + dim
+	}
+	if dim < 0 || dim > ndim {
+		panic(fmt.Sprintf("unsqueeze: dim %d out of range for %dD tensor", dim, ndim))
+	}
+
+	// Compute new shape with 1 at position dim
+	newShape := make(tensor.Shape, ndim+1)
+	for i := 0; i < dim; i++ {
+		newShape[i] = oldShape[i]
+	}
+	newShape[dim] = 1
+	for i := dim; i < ndim; i++ {
+		newShape[i+1] = oldShape[i]
+	}
+
+	// Use Reshape which IS recorded on tape
+	return b.Reshape(x, newShape)
 }
 
-// Squeeze removes a dimension (recorded via Reshape).
+// Squeeze removes dimension of size 1 at the specified position.
+// Recorded via Reshape for proper gradient flow.
 func (b *AutodiffBackend[B]) Squeeze(x *tensor.RawTensor, dim int) *tensor.RawTensor {
-	// Squeeze is just a reshape operation, so use Reshape which is already recorded
-	return b.inner.Squeeze(x, dim)
+	oldShape := x.Shape()
+	ndim := len(oldShape)
+
+	// Normalize negative dimension
+	if dim < 0 {
+		dim = ndim + dim
+	}
+	if dim < 0 || dim >= ndim {
+		panic(fmt.Sprintf("squeeze: dim %d out of range for %dD tensor", dim, ndim))
+	}
+
+	// Only squeeze if dimension is size 1
+	if oldShape[dim] != 1 {
+		// Can't squeeze dimension that's not size 1, return as-is (no-op reshape)
+		return b.Reshape(x, oldShape)
+	}
+
+	// Compute new shape without the squeezed dimension
+	newShape := make(tensor.Shape, 0, ndim-1)
+	for i := 0; i < ndim; i++ {
+		if i != dim {
+			newShape = append(newShape, oldShape[i])
+		}
+	}
+
+	// Handle empty shape case (scalar result)
+	if len(newShape) == 0 {
+		newShape = tensor.Shape{1}
+	}
+
+	// Use Reshape which IS recorded on tape
+	return b.Reshape(x, newShape)
 }
 
-// Gather selects elements along dim using index tensor (passthrough - no autodiff yet).
+// Gather selects elements along dim using index tensor.
 func (b *AutodiffBackend[B]) Gather(x *tensor.RawTensor, dim int, index *tensor.RawTensor) *tensor.RawTensor {
 	defer x.ForceNonUnique()()
 	defer index.ForceNonUnique()()
 
-	// TODO(TASK-016): Implement GatherOp for gradient computation
-	// Backward: scatter_add grad_output to grad_input at index positions
-	// For now, passthrough to inner backend
-	return b.inner.Gather(x, dim, index)
+	// Perform forward pass
+	result := b.inner.Gather(x, dim, index)
+
+	// Record operation for gradient computation
+	if b.tape.IsRecording() {
+		// Normalize dimension
+		ndim := len(x.Shape())
+		normalizedDim := dim
+		if normalizedDim < 0 {
+			normalizedDim = ndim + normalizedDim
+		}
+
+		op := ops.NewGatherOp(x, normalizedDim, index, result)
+		b.tape.Record(op)
+	}
+
+	return result
 }
 
-// Where performs conditional element selection (passthrough - no autodiff yet).
+// Where performs conditional element selection.
+//
+// output[i] = x[i] if condition[i] else y[i]
+//
+// Backward:
+//
+//	grad_x = where(cond, grad_out, 0)
+//	grad_y = where(cond, 0, grad_out)
 func (b *AutodiffBackend[B]) Where(condition, x, y *tensor.RawTensor) *tensor.RawTensor {
 	defer x.ForceNonUnique()()
 	defer y.ForceNonUnique()()
 
-	// TODO(TASK-016): Implement WhereOp for gradient computation
-	// Backward: grad_x = where(cond, grad_out, 0), grad_y = where(cond, 0, grad_out)
-	// For now, passthrough to inner backend
-	return b.inner.Where(condition, x, y)
+	// Forward pass
+	result := b.inner.Where(condition, x, y)
+
+	// Record operation for gradient computation
+	if b.tape.IsRecording() {
+		op := ops.NewWhereOp(condition, x, y, result)
+		b.tape.Record(op)
+	}
+
+	return result
 }
