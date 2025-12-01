@@ -235,3 +235,64 @@ func TestCrossEntropyLoss_WrongTarget(t *testing.T) {
 
 	criterion.Forward(logits, targets)
 }
+
+// TestCrossEntropyLoss_AutodiffTape tests that CrossEntropyLoss records on autodiff tape.
+func TestCrossEntropyLoss_AutodiffTape(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	// Start recording
+	backend.Tape().StartRecording()
+	defer backend.Tape().StopRecording()
+
+	// Create logits [batch=2, classes=3]
+	logits, _ := tensor.FromSlice([]float32{
+		1.0, 2.0, 3.0, // sample 0
+		3.0, 2.0, 1.0, // sample 1
+	}, tensor.Shape{2, 3}, backend)
+
+	targets, _ := tensor.FromSlice([]int32{2, 0}, tensor.Shape{2}, backend)
+
+	// Forward pass through CrossEntropyLoss
+	criterion := nn.NewCrossEntropyLoss(backend)
+	loss := criterion.Forward(logits, targets)
+
+	// Check that tape has operations recorded
+	numOps := backend.Tape().NumOps()
+	if numOps == 0 {
+		t.Error("CrossEntropyLoss should record operations on autodiff tape")
+	}
+
+	// Verify loss value is reasonable
+	lossValue := loss.Raw().AsFloat32()[0]
+	if lossValue < 0 || lossValue > 10 {
+		t.Errorf("Unexpected loss value: %f", lossValue)
+	}
+
+	// Backward pass should work
+	grads := autodiff.Backward(loss, backend)
+
+	// Gradients should exist for logits
+	logitsGrad := grads[logits.Raw()]
+	if logitsGrad == nil {
+		t.Error("CrossEntropyLoss backward: logits gradient should not be nil")
+	}
+
+	// Gradient should have same shape as logits
+	if !logitsGrad.Shape().Equal(logits.Shape()) {
+		t.Errorf("Gradient shape mismatch: got %v, want %v",
+			logitsGrad.Shape(), logits.Shape())
+	}
+
+	// Gradient values should be non-zero (softmax - one_hot)
+	gradData := logitsGrad.AsFloat32()
+	hasNonZero := false
+	for _, g := range gradData {
+		if g != 0 {
+			hasNonZero = true
+			break
+		}
+	}
+	if !hasNonZero {
+		t.Error("CrossEntropyLoss gradient should have non-zero values")
+	}
+}

@@ -56,12 +56,24 @@ func NewCrossEntropyLoss[B tensor.Backend](backend B) *CrossEntropyLoss[B] {
 // Returns:
 //   - Scalar loss value (mean over batch)
 //
-// Note: This is a simplified implementation for Phase 1 (MNIST proof-of-concept).
-// Full autodiff support for Softmax/Log operations will be added in Phase 2.
+// When using an autodiff-aware backend, this operation is recorded on the tape
+// for proper gradient computation during backward pass.
 func (c *CrossEntropyLoss[B]) Forward(
 	logits *tensor.Tensor[float32, B],
 	targets *tensor.Tensor[int32, B],
 ) *tensor.Tensor[float32, B] {
+	// Check if backend supports CrossEntropy (autodiff-aware)
+	type CrossEntropyBackend interface {
+		CrossEntropy(logits, targets *tensor.RawTensor) *tensor.RawTensor
+	}
+
+	if adBackend, ok := any(c.backend).(CrossEntropyBackend); ok {
+		// Use autodiff-aware version that records on tape
+		resultRaw := adBackend.CrossEntropy(logits.Raw(), targets.Raw())
+		return tensor.New[float32, B](resultRaw, c.backend)
+	}
+
+	// Fallback to manual computation for non-autodiff backends
 	shape := logits.Shape()
 	if len(shape) != 2 {
 		panic("CrossEntropyLoss: logits must be 2D [batch_size, num_classes]")
