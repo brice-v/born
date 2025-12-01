@@ -14,7 +14,7 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🎉 **v0.5.0 Released!** (Complete LLM Support!)
+**Project Status**: 🎉 **v0.5.2 Released!** (Critical Autodiff Fixes + Public WebGPU API)
 **Latest**: ⚡ Phase 5 complete - GQA, SwiGLU, Tokenizers, Model Loading, Text Generation
 
 *Pure Go ML with GPU acceleration - no CGO required!*
@@ -238,6 +238,25 @@ type Backend interface {
 | Vulkan | 📋 Q3 2025 | Cross-platform GPU compute |
 | CUDA | 📋 Q3 2025 | NVIDIA GPU via zero-CGO |
 | Metal | 📋 Q4 2025 | Apple GPU (macOS/iOS) |
+
+**GPU Backend Usage (v0.5.2+):**
+
+```go
+import (
+    "github.com/born-ml/born/autodiff"
+    "github.com/born-ml/born/backend/cpu"
+    "github.com/born-ml/born/backend/webgpu"
+)
+
+// Automatic GPU/CPU selection
+var backend tensor.Backend
+if webgpu.IsAvailable() {
+    gpu, _ := webgpu.New()
+    backend = autodiff.New(gpu)
+} else {
+    backend = autodiff.New(cpu.New())
+}
+```
 
 ### Decorator Pattern
 
