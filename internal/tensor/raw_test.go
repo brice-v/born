@@ -6,7 +6,6 @@ import (
 
 // RawTensor Tests
 
-
 func TestRawTensorAsInt64(t *testing.T) {
 	raw, _ := NewRaw(Shape{3, 2}, Int64, CPU)
 	data := raw.AsInt64()
@@ -102,7 +101,7 @@ func TestRawTensorCloneIsShared(t *testing.T) {
 
 func TestNewRawAllTypes(t *testing.T) {
 	types := []struct {
-		dtype     DataType
+		dtype       DataType
 		elementSize int
 	}{
 		{Float32, 4},
