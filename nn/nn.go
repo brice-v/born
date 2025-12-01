@@ -150,6 +150,20 @@ func NewRMSNorm[B tensor.Backend](dModel int, epsilon float32, backend B) *RMSNo
 	return nn.NewRMSNorm(dModel, epsilon, backend)
 }
 
+// LayerNorm represents Layer Normalization.
+type LayerNorm[B tensor.Backend] = nn.LayerNorm[B]
+
+// NewLayerNorm creates a new LayerNorm layer.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	norm := nn.NewLayerNorm[B](768, 1e-5, backend)
+//	output := norm.Forward(input)  // [..., 768] -> [..., 768]
+func NewLayerNorm[B tensor.Backend](normalizedShape int, epsilon float32, backend B) *LayerNorm[B] {
+	return nn.NewLayerNorm(normalizedShape, epsilon, backend)
+}
+
 // Loss Functions
 
 // CrossEntropyLoss represents the cross-entropy loss for classification.
@@ -239,6 +253,72 @@ func Ones[B tensor.Backend](shape tensor.Shape, backend B) *tensor.Tensor[float3
 //	weights := nn.Randn(tensor.Shape{128, 784}, backend)
 func Randn[B tensor.Backend](shape tensor.Shape, backend B) *tensor.Tensor[float32, B] {
 	return nn.Randn(shape, backend)
+}
+
+// Attention Functions
+
+// ScaledDotProductAttention computes attention scores using the scaled dot-product mechanism.
+//
+// This is the core attention mechanism used in transformers.
+//
+// Parameters:
+//   - query: Query tensor [batch, heads, seq_q, head_dim]
+//   - key: Key tensor [batch, heads, seq_k, head_dim]
+//   - value: Value tensor [batch, heads, seq_k, head_dim]
+//   - mask: Optional attention mask [batch, 1, seq_q, seq_k] or nil (additive mask, -inf for masked)
+//   - scale: Scaling factor (0 for auto-compute as 1/sqrt(head_dim))
+//
+// Returns:
+//   - output: Attended values [batch, heads, seq_q, head_dim]
+//   - weights: Attention weights [batch, heads, seq_q, seq_k]
+//
+// Example:
+//
+//	Q := tensor.Randn[float32](tensor.Shape{2, 8, 10, 64}, backend)
+//	K := tensor.Randn[float32](tensor.Shape{2, 8, 10, 64}, backend)
+//	V := tensor.Randn[float32](tensor.Shape{2, 8, 10, 64}, backend)
+//	output, weights := nn.ScaledDotProductAttention(Q, K, V, nil, 0)
+func ScaledDotProductAttention[B tensor.Backend](
+	query, key, value *tensor.Tensor[float32, B],
+	mask *tensor.Tensor[float32, B],
+	scale float32,
+) (*tensor.Tensor[float32, B], *tensor.Tensor[float32, B]) {
+	return nn.ScaledDotProductAttention(query, key, value, mask, scale)
+}
+
+// CausalMask creates a causal (autoregressive) attention mask.
+//
+// In causal attention, each position can only attend to earlier positions.
+// This is used in autoregressive models like GPT.
+//
+// Returns a mask tensor where future positions are masked with -inf.
+// Shape: [1, 1, seq_len, seq_len] (broadcastable to [batch, heads, seq, seq])
+//
+// Example:
+//
+//	mask := nn.CausalMask(10, backend)  // [1, 1, 10, 10]
+//	output, weights := nn.ScaledDotProductAttention(Q, K, V, mask, 0)
+func CausalMask[B tensor.Backend](seqLen int, backend B) *tensor.Tensor[float32, B] {
+	return nn.CausalMask(seqLen, backend)
+}
+
+// MultiHeadAttention represents the multi-head attention mechanism.
+type MultiHeadAttention[B tensor.Backend] = nn.MultiHeadAttention[B]
+
+// NewMultiHeadAttention creates a new multi-head attention module.
+//
+// Parameters:
+//   - embedDim: Total embedding dimension (must be divisible by numHeads)
+//   - numHeads: Number of attention heads
+//   - backend: Computation backend
+//
+// Example:
+//
+//	backend := cpu.New()
+//	mha := nn.NewMultiHeadAttention[B](768, 12, backend)  // BERT-base config
+//	output := mha.Forward(x, x, x, nil)  // Self-attention
+func NewMultiHeadAttention[B tensor.Backend](embedDim, numHeads int, backend B) *MultiHeadAttention[B] {
+	return nn.NewMultiHeadAttention[B](embedDim, numHeads, backend)
 }
 
 // Utility functions
