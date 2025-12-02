@@ -282,17 +282,32 @@ func (b *Backend) trackBufferRelease(size uint64) {
 	b.memoryStats.activeBuffers--
 }
 
-// Gather selects elements along dim using index tensor (not implemented yet).
-func (b *Backend) Gather(_ *tensor.RawTensor, _ int, _ *tensor.RawTensor) *tensor.RawTensor {
-	panic("webgpu: Gather not implemented yet - TODO(TASK-016)")
+// Gather selects elements along dim using index tensor on GPU.
+func (b *Backend) Gather(input *tensor.RawTensor, dim int, indices *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runGather(input, dim, indices)
+	if err != nil {
+		panic("webgpu: Gather: " + err.Error())
+	}
+	return result
 }
 
-// Where performs conditional element selection (not implemented yet).
-func (b *Backend) Where(_, _, _ *tensor.RawTensor) *tensor.RawTensor {
-	panic("webgpu: Where not implemented yet - TODO(TASK-016)")
+// Where performs conditional element selection on GPU.
+// result[i] = condition[i] != 0 ? x[i] : y[i].
+func (b *Backend) Where(condition, x, y *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runWhere(condition, x, y)
+	if err != nil {
+		panic("webgpu: Where: " + err.Error())
+	}
+	return result
 }
 
-// Embedding performs embedding lookup (not implemented yet).
-func (b *Backend) Embedding(_, _ *tensor.RawTensor) *tensor.RawTensor {
-	panic("webgpu: Embedding not implemented yet")
+// Embedding performs embedding lookup on GPU.
+// weight: [num_embeddings, embedding_dim], indices: int32 tensor.
+// Returns: [...indices_shape, embedding_dim].
+func (b *Backend) Embedding(weight, indices *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runEmbedding(weight, indices)
+	if err != nil {
+		panic("webgpu: Embedding: " + err.Error())
+	}
+	return result
 }

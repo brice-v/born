@@ -1,6 +1,8 @@
 package ops
 
 import (
+	"fmt"
+
 	"github.com/born-ml/born/internal/tensor"
 )
 
@@ -131,6 +133,8 @@ func zeroInitialize(t *tensor.RawTensor) {
 //   - src: source tensor (gradOutput)
 //   - index: index tensor specifying where to scatter
 //   - dim: dimension along which to scatter
+//
+//nolint:cyclop // Complex but readable scatter operation with dtype handling
 func scatterAddAlongDim(dst, src, index *tensor.RawTensor, dim int) {
 	srcShape := src.Shape()
 	dstShape := dst.Shape()
@@ -150,7 +154,30 @@ func scatterAddAlongDim(dst, src, index *tensor.RawTensor, dim int) {
 	indexStrides := indexShape.ComputeStrides()
 
 	numElements := src.NumElements()
-	indices := index.AsInt32()
+
+	// Convert indices to int32 regardless of original dtype
+	var indices []int32
+	switch index.DType() {
+	case tensor.Int32:
+		indices = index.AsInt32()
+	case tensor.Int64:
+		// Convert int64 to int32
+		src64 := index.AsInt64()
+		indices = make([]int32, len(src64))
+		for i, v := range src64 {
+			//nolint:gosec // G115: Safe - index values are within int32 range for ML operations
+			indices[i] = int32(v)
+		}
+	case tensor.Float32:
+		// Convert float32 to int32 (for boolean/comparison results)
+		srcF := index.AsFloat32()
+		indices = make([]int32, len(srcF))
+		for i, v := range srcF {
+			indices[i] = int32(v)
+		}
+	default:
+		panic("scatterAddAlongDim: index must be int32, int64, or float32")
+	}
 
 	// Handle different data types
 	switch src.DType() {
@@ -191,7 +218,8 @@ func scatterAddFloat32(dst, src []float32, indices []int32, dim, numElements int
 
 		// Validate index
 		if idx < 0 || idx >= dstShape[dim] {
-			panic("scatterAddAlongDim: index out of bounds")
+			panic(fmt.Sprintf("scatterAddAlongDim: index out of bounds: idx=%d, dstShape[%d]=%d, srcShape=%v, dstShape=%v",
+				idx, dim, dstShape[dim], srcShape, dstShape))
 		}
 
 		// Compute destination index by replacing coord[dim] with idx

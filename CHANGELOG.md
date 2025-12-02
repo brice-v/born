@@ -5,6 +5,39 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2025-12-02
+
+### 🐛 WebGPU Backend Fixes (HRM Compatibility)
+
+**Bug Fixes**:
+- **Comparison ops** - Now always return `float32` (0.0/1.0), even for `int32` inputs
+- **Sum int32** - Added WGSL shader for int32 sum reduction
+- **Sum scalar shape** - Fixed return shape from `[1]` to `[]` for proper scalar handling
+- **Where int32 condition** - Added support for int32 condition tensors
+- **Where broadcasting** - Added NumPy-style broadcasting (like Burn)
+- **Gather backward** - Support for int32, int64, float32 index tensors
+
+**New Functions**:
+- `runComparisonOp` - Dedicated function for comparison operations
+- `int32ToFloat32` - Helper for int32 to float32 conversion
+
+**Tests**:
+- 3 new Gather backward tests (int64 indices, boundary, dim0 2D)
+
+## [0.5.2] - 2025-12-01
+
+### ✨ Public WebGPU API
+
+- Added public `backend/webgpu` package with `NewBackend()` function
+- Windows build tag support for WebGPU
+- Updated README with WebGPU API example
+
+## [0.5.1] - 2025-12-01
+
+### 🐛 Fixes
+
+- Minor fixes after v0.5.0 release
+
 ## [0.5.0] - 2025-12-01
 
 ### 🚀 Phase 5: LLM Support

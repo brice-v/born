@@ -304,3 +304,184 @@ func TestGatherOp_Backward_NegativeDim(t *testing.T) {
 		}
 	}
 }
+
+// TestGatherOp_Backward_Int64Indices tests gather backward with int64 indices.
+func TestGatherOp_Backward_Int64Indices(t *testing.T) {
+	backend := cpu.New()
+
+	// Input: [10, 20, 30, 40, 50]
+	input, err := tensor.NewRaw(tensor.Shape{5}, tensor.Float32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create input: %v", err)
+	}
+	inputData := input.AsFloat32()
+	for i := range inputData {
+		inputData[i] = float32((i + 1) * 10)
+	}
+
+	// Index as int64: [4, 2, 0]
+	index, err := tensor.NewRaw(tensor.Shape{3}, tensor.Int64, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create index: %v", err)
+	}
+	indexData := index.AsInt64()
+	indexData[0], indexData[1], indexData[2] = 4, 2, 0
+
+	// Forward using CPU (which accepts int64)
+	// We'll manually create the output for this test
+	output, err := tensor.NewRaw(tensor.Shape{3}, tensor.Float32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create output: %v", err)
+	}
+	outputData := output.AsFloat32()
+	outputData[0], outputData[1], outputData[2] = 50, 30, 10
+
+	// Create GatherOp
+	op := NewGatherOp(input, 0, index, output)
+
+	// Create gradient output
+	gradOutput, err := tensor.NewRaw(tensor.Shape{3}, tensor.Float32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create gradOutput: %v", err)
+	}
+	gradOutData := gradOutput.AsFloat32()
+	gradOutData[0], gradOutData[1], gradOutData[2] = 1, 2, 3
+
+	// Backward - should handle int64 indices
+	grads := op.Backward(gradOutput, backend)
+
+	// Check values
+	// gradOutput[0]=1 goes to input[4] -> grad[4]=1
+	// gradOutput[1]=2 goes to input[2] -> grad[2]=2
+	// gradOutput[2]=3 goes to input[0] -> grad[0]=3
+	gradData := grads[0].AsFloat32()
+	expected := []float32{3, 0, 2, 0, 1}
+	for i, exp := range expected {
+		if gradData[i] != exp {
+			t.Errorf("grad[%d] = %f, expected %f", i, gradData[i], exp)
+		}
+	}
+}
+
+// TestGatherOp_Backward_BoundaryIndices tests gather with max valid indices.
+func TestGatherOp_Backward_BoundaryIndices(t *testing.T) {
+	backend := cpu.New()
+
+	// Input: [2, 10] tensor
+	input, err := tensor.NewRaw(tensor.Shape{2, 10}, tensor.Float32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create input: %v", err)
+	}
+	inputData := input.AsFloat32()
+	for i := range inputData {
+		inputData[i] = float32(i)
+	}
+
+	// Index with max valid values (9 for dim size 10)
+	index, err := tensor.NewRaw(tensor.Shape{2, 3}, tensor.Int32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create index: %v", err)
+	}
+	indexData := index.AsInt32()
+	indexData[0], indexData[1], indexData[2] = 0, 9, 5 // row 0: boundary test
+	indexData[3], indexData[4], indexData[5] = 9, 0, 9 // row 1: multiple 9s
+
+	// Forward
+	output := backend.Gather(input, 1, index)
+
+	// Create GatherOp
+	op := NewGatherOp(input, 1, index, output)
+
+	// Create gradient output (all ones)
+	gradOutput, err := tensor.NewRaw(tensor.Shape{2, 3}, tensor.Float32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create gradOutput: %v", err)
+	}
+	gradOutData := gradOutput.AsFloat32()
+	for i := range gradOutData {
+		gradOutData[i] = 1.0
+	}
+
+	// Backward - should not panic with boundary indices
+	grads := op.Backward(gradOutput, backend)
+
+	// Check shape
+	if !grads[0].Shape().Equal(tensor.Shape{2, 10}) {
+		t.Errorf("grad shape = %v, expected [2, 10]", grads[0].Shape())
+	}
+
+	// Check boundary values
+	gradData := grads[0].AsFloat32()
+	// Row 0: indices [0, 9, 5] -> grads at positions 0, 9, 5
+	if gradData[0] != 1 {
+		t.Errorf("grad[0] = %f, expected 1", gradData[0])
+	}
+	if gradData[9] != 1 {
+		t.Errorf("grad[9] = %f, expected 1 (boundary)", gradData[9])
+	}
+	// Row 1: index 9 appears twice -> grad[19] = 2
+	if gradData[19] != 2 {
+		t.Errorf("grad[19] = %f, expected 2 (accumulated)", gradData[19])
+	}
+}
+
+// TestGatherOp_Backward_Dim0_2D tests gather along dim 0 for 2D tensor.
+func TestGatherOp_Backward_Dim0_2D(t *testing.T) {
+	backend := cpu.New()
+
+	// Input: [[1, 2, 3],
+	//         [4, 5, 6],
+	//         [7, 8, 9]]
+	input, err := tensor.NewRaw(tensor.Shape{3, 3}, tensor.Float32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create input: %v", err)
+	}
+	inputData := input.AsFloat32()
+	for i := range inputData {
+		inputData[i] = float32(i + 1)
+	}
+
+	// Index: [[2, 0, 1],
+	//         [0, 2, 0]] (gather along dim 0)
+	index, err := tensor.NewRaw(tensor.Shape{2, 3}, tensor.Int32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create index: %v", err)
+	}
+	indexData := index.AsInt32()
+	indexData[0], indexData[1], indexData[2] = 2, 0, 1
+	indexData[3], indexData[4], indexData[5] = 0, 2, 0
+
+	// Forward
+	output := backend.Gather(input, 0, index)
+
+	// Create GatherOp
+	op := NewGatherOp(input, 0, index, output)
+
+	// Create gradient output (all ones)
+	gradOutput, err := tensor.NewRaw(tensor.Shape{2, 3}, tensor.Float32, backend.Device())
+	if err != nil {
+		t.Fatalf("Failed to create gradOutput: %v", err)
+	}
+	gradOutData := gradOutput.AsFloat32()
+	for i := range gradOutData {
+		gradOutData[i] = 1.0
+	}
+
+	// Backward
+	grads := op.Backward(gradOutput, backend)
+
+	// Check shape
+	if !grads[0].Shape().Equal(tensor.Shape{3, 3}) {
+		t.Errorf("grad shape = %v, expected [3, 3]", grads[0].Shape())
+	}
+
+	// Verify gradients sum to number of gathered elements (6)
+	gradData := grads[0].AsFloat32()
+	var sum float32
+	for _, v := range gradData {
+		sum += v
+	}
+	if sum != 6 {
+		t.Errorf("grad sum = %f, expected 6", sum)
+	}
+}
