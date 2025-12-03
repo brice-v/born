@@ -1,6 +1,8 @@
 package nn
 
 import (
+	"fmt"
+
 	"github.com/born-ml/born/internal/tensor"
 )
 
@@ -96,4 +98,51 @@ func (s *Sequential[B]) Module(index int) Module[B] {
 		panic("Sequential.Module: index out of bounds")
 	}
 	return s.modules[index]
+}
+
+// StateDict returns a map of parameter names to raw tensors.
+//
+// Parameters are prefixed with their module index (e.g., "0.weight", "0.bias", "2.weight", etc.)
+// to avoid name collisions.
+func (s *Sequential[B]) StateDict() map[string]*tensor.RawTensor {
+	stateDict := make(map[string]*tensor.RawTensor)
+
+	for i, module := range s.modules {
+		moduleStateDict := module.StateDict()
+		for name, raw := range moduleStateDict {
+			// Prefix with module index
+			key := fmt.Sprintf("%d.%s", i, name)
+			stateDict[key] = raw
+		}
+	}
+
+	return stateDict
+}
+
+// LoadStateDict loads parameters from a state dictionary.
+//
+// Parameters should be prefixed with their module index (e.g., "0.weight", "0.bias").
+func (s *Sequential[B]) LoadStateDict(stateDict map[string]*tensor.RawTensor) error {
+	for i, module := range s.modules {
+		// Extract parameters for this module
+		moduleStateDict := make(map[string]*tensor.RawTensor)
+		prefix := fmt.Sprintf("%d.", i)
+
+		for key, raw := range stateDict {
+			if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+				// Remove prefix
+				paramName := key[len(prefix):]
+				moduleStateDict[paramName] = raw
+			}
+		}
+
+		// Load into module (only if it has parameters)
+		if len(moduleStateDict) > 0 {
+			if err := module.LoadStateDict(moduleStateDict); err != nil {
+				return fmt.Errorf("failed to load module %d: %w", i, err)
+			}
+		}
+	}
+
+	return nil
 }

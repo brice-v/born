@@ -56,6 +56,16 @@ func (r *ReLU[B]) Parameters() []*Parameter[B] {
 	return nil
 }
 
+// StateDict returns an empty map (ReLU has no trainable parameters).
+func (r *ReLU[B]) StateDict() map[string]*tensor.RawTensor {
+	return make(map[string]*tensor.RawTensor)
+}
+
+// LoadStateDict loads parameters (no-op for ReLU).
+func (r *ReLU[B]) LoadStateDict(_ map[string]*tensor.RawTensor) error {
+	return nil
+}
+
 // Sigmoid is a sigmoid activation module.
 //
 // Applies the element-wise function: σ(x) = 1 / (1 + exp(-x))
@@ -93,6 +103,16 @@ func (s *Sigmoid[B]) Parameters() []*Parameter[B] {
 	return nil
 }
 
+// StateDict returns an empty map (Sigmoid has no trainable parameters).
+func (s *Sigmoid[B]) StateDict() map[string]*tensor.RawTensor {
+	return make(map[string]*tensor.RawTensor)
+}
+
+// LoadStateDict loads parameters (no-op for Sigmoid).
+func (s *Sigmoid[B]) LoadStateDict(_ map[string]*tensor.RawTensor) error {
+	return nil
+}
+
 // Tanh is a hyperbolic tangent activation module.
 //
 // Applies the element-wise function: tanh(x) = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
@@ -127,6 +147,16 @@ func (t *Tanh[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tensor[float
 
 // Parameters returns an empty slice (Tanh has no trainable parameters).
 func (t *Tanh[B]) Parameters() []*Parameter[B] {
+	return nil
+}
+
+// StateDict returns an empty map (Tanh has no trainable parameters).
+func (t *Tanh[B]) StateDict() map[string]*tensor.RawTensor {
+	return make(map[string]*tensor.RawTensor)
+}
+
+// LoadStateDict loads parameters (no-op for Tanh).
+func (t *Tanh[B]) LoadStateDict(_ map[string]*tensor.RawTensor) error {
 	return nil
 }
 
@@ -170,5 +200,15 @@ func (s *SiLU[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tensor[float
 
 // Parameters returns an empty slice (SiLU has no trainable parameters).
 func (s *SiLU[B]) Parameters() []*Parameter[B] {
+	return nil
+}
+
+// StateDict returns an empty map (SiLU has no trainable parameters).
+func (s *SiLU[B]) StateDict() map[string]*tensor.RawTensor {
+	return make(map[string]*tensor.RawTensor)
+}
+
+// LoadStateDict loads parameters (no-op for SiLU).
+func (s *SiLU[B]) LoadStateDict(_ map[string]*tensor.RawTensor) error {
 	return nil
 }

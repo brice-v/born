@@ -127,3 +127,6 @@ reference/
 # Internal developer docs
 INDEX.md
 docs/dev/
+
+# Internal format specification (not public until v1.0+)
+docs/spec/

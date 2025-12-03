@@ -136,3 +136,66 @@ func (l *Linear[B]) InFeatures() int {
 func (l *Linear[B]) OutFeatures() int {
 	return l.outFeatures
 }
+
+// StateDict returns a map of parameter names to raw tensors.
+func (l *Linear[B]) StateDict() map[string]*tensor.RawTensor {
+	stateDict := make(map[string]*tensor.RawTensor)
+	stateDict["weight"] = l.weight.Tensor().Raw()
+	if l.bias != nil {
+		stateDict["bias"] = l.bias.Tensor().Raw()
+	}
+	return stateDict
+}
+
+// LoadStateDict loads parameters from a state dictionary.
+func (l *Linear[B]) LoadStateDict(stateDict map[string]*tensor.RawTensor) error {
+	// Load weight
+	weightRaw, ok := stateDict["weight"]
+	if !ok {
+		return fmt.Errorf("missing weight in state dict")
+	}
+
+	// Validate weight shape
+	expectedWeightShape := tensor.Shape{l.outFeatures, l.inFeatures}
+	if !weightRaw.Shape().Equal(expectedWeightShape) {
+		return fmt.Errorf("weight shape mismatch: expected %v, got %v",
+			expectedWeightShape, weightRaw.Shape())
+	}
+
+	// Validate weight dtype
+	if weightRaw.DType() != tensor.Float32 {
+		return fmt.Errorf("weight dtype mismatch: expected float32, got %v",
+			weightRaw.DType())
+	}
+
+	// Copy weight data
+	weightData := l.weight.Tensor().Data()
+	copy(weightData, weightRaw.AsFloat32())
+
+	// Load bias if present
+	if l.bias != nil {
+		biasRaw, ok := stateDict["bias"]
+		if !ok {
+			return fmt.Errorf("missing bias in state dict")
+		}
+
+		// Validate bias shape
+		expectedBiasShape := tensor.Shape{l.outFeatures}
+		if !biasRaw.Shape().Equal(expectedBiasShape) {
+			return fmt.Errorf("bias shape mismatch: expected %v, got %v",
+				expectedBiasShape, biasRaw.Shape())
+		}
+
+		// Validate bias dtype
+		if biasRaw.DType() != tensor.Float32 {
+			return fmt.Errorf("bias dtype mismatch: expected float32, got %v",
+				biasRaw.DType())
+		}
+
+		// Copy bias data
+		biasData := l.bias.Tensor().Data()
+		copy(biasData, biasRaw.AsFloat32())
+	}
+
+	return nil
+}

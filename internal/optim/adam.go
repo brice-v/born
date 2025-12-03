@@ -1,6 +1,7 @@
 package optim
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/born-ml/born/internal/nn"
@@ -215,4 +216,73 @@ func (a *Adam[B]) SetLR(lr float32) {
 // Useful for monitoring optimizer state.
 func (a *Adam[B]) GetTimestep() int {
 	return a.t
+}
+
+// StateDict returns the optimizer state for serialization.
+//
+// For Adam, this exports:
+//   - First moment estimates (m) for each parameter: "m.{param_index}"
+//   - Second moment estimates (v) for each parameter: "v.{param_index}"
+//
+// Returns a map from state name to RawTensor.
+func (a *Adam[B]) StateDict() map[string]*tensor.RawTensor {
+	stateDict := make(map[string]*tensor.RawTensor)
+
+	// Export first moment (m) and second moment (v) for each parameter
+	for i, param := range a.params {
+		// First moment
+		if m, exists := a.m[param]; exists {
+			key := fmt.Sprintf("m.%d", i)
+			stateDict[key] = m.Raw()
+		}
+
+		// Second moment
+		if v, exists := a.v[param]; exists {
+			key := fmt.Sprintf("v.%d", i)
+			stateDict[key] = v.Raw()
+		}
+	}
+
+	return stateDict
+}
+
+// LoadStateDict loads optimizer state from serialization.
+//
+// Restores first and second moment estimates for Adam optimizer.
+//
+// Parameters:
+//   - stateDict: Map from state name to RawTensor
+//
+// Returns an error if moment shapes don't match parameter shapes.
+func (a *Adam[B]) LoadStateDict(stateDict map[string]*tensor.RawTensor) error {
+	// Clear existing state
+	a.m = make(map[*nn.Parameter[B]]*tensor.Tensor[float32, B])
+	a.v = make(map[*nn.Parameter[B]]*tensor.Tensor[float32, B])
+
+	// Load first and second moments for each parameter
+	for i, param := range a.params {
+		// Load first moment (m)
+		mKey := fmt.Sprintf("m.%d", i)
+		if mRaw, exists := stateDict[mKey]; exists {
+			// Validate shape
+			if !mRaw.Shape().Equal(param.Tensor().Shape()) {
+				return fmt.Errorf("m shape mismatch for parameter %d: expected %v, got %v",
+					i, param.Tensor().Shape(), mRaw.Shape())
+			}
+			a.m[param] = tensor.New[float32, B](mRaw, a.backend)
+		}
+
+		// Load second moment (v)
+		vKey := fmt.Sprintf("v.%d", i)
+		if vRaw, exists := stateDict[vKey]; exists {
+			// Validate shape
+			if !vRaw.Shape().Equal(param.Tensor().Shape()) {
+				return fmt.Errorf("v shape mismatch for parameter %d: expected %v, got %v",
+					i, param.Tensor().Shape(), vRaw.Shape())
+			}
+			a.v[param] = tensor.New[float32, B](vRaw, a.backend)
+		}
+	}
+
+	return nil
 }

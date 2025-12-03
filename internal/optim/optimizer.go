@@ -44,6 +44,8 @@ import (
 //   - Step: Apply gradient updates to parameters
 //   - ZeroGrad: Clear gradients before next iteration
 //   - GetLR: Get current learning rate (for monitoring/scheduling)
+//   - StateDict: Export optimizer state for checkpoints
+//   - LoadStateDict: Import optimizer state from checkpoints
 type Optimizer interface {
 	// Step applies gradient updates to all parameters.
 	//
@@ -70,6 +72,27 @@ type Optimizer interface {
 	//
 	// Useful for monitoring and learning rate scheduling.
 	GetLR() float32
+
+	// StateDict returns the optimizer state for serialization.
+	//
+	// This includes optimizer-specific state like momentum buffers (SGD)
+	// or moment estimates (Adam). Used for checkpoint saving.
+	//
+	// Returns a map from state name to RawTensor.
+	// State names follow the pattern: "{state_type}.{param_index}"
+	// For example: "velocity.0", "m.0", "v.0"
+	StateDict() map[string]*tensor.RawTensor
+
+	// LoadStateDict loads optimizer state from serialization.
+	//
+	// Restores optimizer-specific state from a checkpoint. The state
+	// dictionary should match the structure returned by StateDict().
+	//
+	// Parameters:
+	//   - stateDict: Map from state name to RawTensor
+	//
+	// Returns an error if the state dictionary is invalid.
+	LoadStateDict(stateDict map[string]*tensor.RawTensor) error
 }
 
 // Config is the base configuration for all optimizers.
