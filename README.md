@@ -1,5 +1,9 @@
 # Born - Production-Ready ML for Go
 
+<p align="center">
+  <img src="assets/born.png" alt="Born ML Framework - Inspired by Burn" width="800">
+</p>
+
 [![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/born-ml/born.svg)](https://pkg.go.dev/github.com/born-ml/born)
 [![Go Report Card](https://goreportcard.com/badge/github.com/born-ml/born)](https://goreportcard.com/report/github.com/born-ml/born)
