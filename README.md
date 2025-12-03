@@ -18,8 +18,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🎉 **v0.5.3 Released!** (Complete WebGPU Backend - 35+ GPU Operations!)
-**Latest**: ⚡ Full WebGPU backend with Conv2D, MaxPool2D, BatchMatMul, Comparisons, Reductions
+**Project Status**: 🎉 **v0.5.4 Released!** (Model Serialization - Save/Load/Checkpoints!)
+**Latest**: 💾 Save/Load models, training checkpoints, SafeTensors export for HuggingFace
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -65,13 +65,18 @@ prediction := model.Predict(image)
 - **Production Ready** - Single binary deployment, fast startup
 - **WebAssembly** - Run inference in browsers natively
 
-### GPU Backend (v0.5.3) 🆕
+### Model Serialization (v0.5.4) 🆕
+- **Save/Load Models** - Native `.born` format with `nn.Save()` / `nn.Load()`
+- **Training Checkpoints** - Resume training with `nn.SaveCheckpoint()` / `nn.LoadCheckpoint()`
+- **SafeTensors Export** - HuggingFace compatible with `serialization.WriteSafeTensors()`
+- **Optimizer State** - SGD/Adam momentum and moments preserved in checkpoints
+- **Metadata Support** - Custom metadata in model files
+
+### GPU Backend (v0.5.3)
 - **Complete WebGPU** - All operations for LLM inference on GPU
 - **CNN Support** - Conv2D, MaxPool2D with WGSL compute shaders
 - **BatchMatMul** - 3D/4D tensor support for attention mechanisms
-- **Comparisons** - Greater, Lower, Equal, etc. on GPU
-- **Reductions** - Sum, Argmax with parallel GPU reduction
-- **Zero-CGO** - Pure Go via [go-webgpu](https://github.com/AlfredDobra662/webgpu)
+- **Zero-CGO** - Pure Go via [go-webgpu](https://github.com/go-webgpu/webgpu)
 
 ### LLM Support (v0.5.0) 🆕
 - **Grouped Query Attention (GQA)** - Memory-efficient attention (LLaMA 2/3, Mistral)
