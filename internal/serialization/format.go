@@ -17,6 +17,16 @@ const (
 	ChecksumOffsetV2  = 0x20 // Checksum offset in v2 fixed header
 )
 
+// Data type string constants for serialization.
+const (
+	DTypeFloat32 = "float32"
+	DTypeFloat64 = "float64"
+	DTypeInt32   = "int32"
+	DTypeInt64   = "int64"
+	DTypeUint8   = "uint8"
+	DTypeBool    = "bool"
+)
+
 // Flags for the .born format.
 const (
 	FlagCompressed   uint32 = 1 << 0 // bit 0: gzip compression
@@ -59,17 +69,17 @@ type TensorMeta struct {
 func dtypeToString(dt tensor.DataType) string {
 	switch dt {
 	case tensor.Float32:
-		return "float32"
+		return DTypeFloat32
 	case tensor.Float64:
-		return "float64"
+		return DTypeFloat64
 	case tensor.Int32:
-		return "int32"
+		return DTypeInt32
 	case tensor.Int64:
-		return "int64"
+		return DTypeInt64
 	case tensor.Uint8:
-		return "uint8"
+		return DTypeUint8
 	case tensor.Bool:
-		return "bool"
+		return DTypeBool
 	default:
 		return "unknown"
 	}
@@ -78,17 +88,17 @@ func dtypeToString(dt tensor.DataType) string {
 // stringToDtype converts string representation to tensor.DataType.
 func stringToDtype(s string) (tensor.DataType, bool) {
 	switch s {
-	case "float32":
+	case DTypeFloat32:
 		return tensor.Float32, true
-	case "float64":
+	case DTypeFloat64:
 		return tensor.Float64, true
-	case "int32":
+	case DTypeInt32:
 		return tensor.Int32, true
-	case "int64":
+	case DTypeInt64:
 		return tensor.Int64, true
-	case "uint8":
+	case DTypeUint8:
 		return tensor.Uint8, true
-	case "bool":
+	case DTypeBool:
 		return tensor.Bool, true
 	default:
 		return 0, false
