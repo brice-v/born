@@ -5,6 +5,61 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2025-12-03
+
+### ⚡ WebGPU Performance Hotfix
+
+Critical performance fix for transformer training on WebGPU backend.
+
+**Problem Fixed**:
+- Multi-dimensional Transpose operations (3D+) were falling back to CPU
+- Expand (broadcasting) was CPU-only
+- Result: ~60s/batch for small transformer models (should be <1s)
+
+**New GPU Operations**:
+- **TransposeND shader** - N-dimensional transpose on GPU (up to 6D)
+- **Expand shader** - NumPy-style broadcasting on GPU
+- Both support `float32` and `int32` data types
+
+**Performance Impact**:
+- ~60x speedup for attention operations
+- Transformer training now usable on WebGPU
+
+**Tests**:
+- 9 new tests: `TestTranspose3D`, `TestTranspose4D`, `TestTranspose5D`, `TestExpandBroadcast`, etc.
+
+**Files Changed**:
+- `internal/backend/webgpu/shaders.go` - Added WGSL shaders
+- `internal/backend/webgpu/compute.go` - Added `runTransposeND`, `runExpand`
+- `internal/backend/webgpu/ops.go` - Removed CPU fallback
+- `internal/backend/webgpu/ops_extended.go` - Removed CPU fallback
+- `internal/backend/webgpu/ops_nd_test.go` - New test file
+
+## [0.5.4] - 2025-12-03
+
+### 💾 Model Serialization
+
+Production-ready model serialization with Format v2 best practices.
+
+**New Features**:
+- **Born Native Format v2** (`.born`) - SHA-256 checksum, security validation
+- **Checkpoint API** - Save/resume training with optimizer state
+- **SafeTensors Export** - HuggingFace ecosystem compatibility
+- **Memory-Mapped Reader** - Efficient loading for 70GB+ models
+
+**API**:
+- `nn.Save(model, "model.born", "ModelType", metadata)` - Save model
+- `nn.Load("model.born", backend, model)` - Load model
+- `nn.SaveCheckpoint(path, model, optimizer, epoch, step, loss)` - Save checkpoint
+- `nn.LoadCheckpoint(path, backend, model, optimizer)` - Resume training
+- `serialization.WriteSafeTensors(path, tensors, metadata)` - Export for HuggingFace
+
+**New Package**:
+- `internal/serialization` - Format writer/reader, validation, mmap
+
+**Tests**:
+- 26 new tests for serialization, checkpoints, SafeTensors
+
 ## [0.5.3] - 2025-12-02
 
 ### 🐛 WebGPU Backend Fixes (HRM Compatibility)

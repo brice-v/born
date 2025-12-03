@@ -266,80 +266,14 @@ func (b *Backend) Argmax(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 // Shape operations.
 
 // Expand broadcasts tensor to new shape.
+// GPU-accelerated for up to 6D tensors.
 func (b *Backend) Expand(x *tensor.RawTensor, newShape tensor.Shape) *tensor.RawTensor {
-	// Expand is a broadcasting operation - implemented on CPU for simplicity
-	shape := x.Shape()
-
-	// Validate shapes are compatible for broadcasting
-	if len(newShape) < len(shape) {
-		panic("webgpu: Expand: new shape must have at least as many dimensions")
-	}
-
-	// Create result tensor
-	result, err := tensor.NewRaw(newShape, x.DType(), tensor.WebGPU)
+	// Use GPU-accelerated expand
+	result, err := b.runExpand(x, newShape)
 	if err != nil {
 		panic("webgpu: Expand: " + err.Error())
 	}
-
-	switch x.DType() {
-	case tensor.Float32:
-		expandFloat32(x.AsFloat32(), result.AsFloat32(), shape, newShape)
-	case tensor.Int32:
-		expandInt32(x.AsInt32(), result.AsInt32(), shape, newShape)
-	default:
-		panic("webgpu: Expand: unsupported dtype " + x.DType().String())
-	}
-
 	return result
-}
-
-// expandFloat32 broadcasts data from source shape to target shape.
-func expandFloat32(src, dst []float32, srcShape, dstShape tensor.Shape) {
-	expandGeneric(src, dst, srcShape, dstShape)
-}
-
-// expandInt32 broadcasts int32 data from source shape to target shape.
-func expandInt32(src, dst []int32, srcShape, dstShape tensor.Shape) {
-	expandGeneric(src, dst, srcShape, dstShape)
-}
-
-// expandGeneric broadcasts data from source shape to target shape (generic version).
-func expandGeneric[T any](src, dst []T, srcShape, dstShape tensor.Shape) {
-	// Calculate strides
-	srcStrides := srcShape.ComputeStrides()
-	dstStrides := dstShape.ComputeStrides()
-
-	// Pad source shape to match destination dimensions
-	dimDiff := len(dstShape) - len(srcShape)
-	paddedSrcShape := make(tensor.Shape, len(dstShape))
-	paddedSrcStrides := make([]int, len(dstShape))
-	for i := 0; i < dimDiff; i++ {
-		paddedSrcShape[i] = 1
-		paddedSrcStrides[i] = 0
-	}
-	for i := 0; i < len(srcShape); i++ {
-		paddedSrcShape[dimDiff+i] = srcShape[i]
-		paddedSrcStrides[dimDiff+i] = srcStrides[i]
-	}
-
-	numElements := dstShape.NumElements()
-	for i := 0; i < numElements; i++ {
-		// Calculate destination coordinates
-		temp := i
-		srcIdx := 0
-		for d := 0; d < len(dstShape); d++ {
-			coord := temp / dstStrides[d]
-			temp %= dstStrides[d]
-
-			// Map to source index (with broadcasting)
-			srcCoord := coord
-			if paddedSrcShape[d] == 1 {
-				srcCoord = 0
-			}
-			srcIdx += srcCoord * paddedSrcStrides[d]
-		}
-		dst[i] = src[srcIdx]
-	}
 }
 
 // Type conversion.

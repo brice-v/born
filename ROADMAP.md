@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2025-11-30 | **Current Version**: v0.3.0 | **Strategy**: Core Features → GPU Support → Transformer Primitives → Advanced Features → v1.0.0 LTS | **Milestone**: v0.3.0 RELEASED! (2025-11-30) → v1.0.0 LTS (2027-2028)
+**Last Updated**: 2025-12-03 | **Current Version**: v0.5.5 | **Strategy**: Core Features → GPU Support → LLM Support → ONNX → v1.0.0 LTS | **Milestone**: v0.5.5 RELEASED! (2025-12-03) → v1.0.0 LTS (2027-2028)
 
 ---
 
@@ -42,13 +42,19 @@ v0.1.0 (INITIAL RELEASE) ✅ RELEASED (2025-11-17)
        ↓ (GPU backend development)
 v0.2.0 (WebGPU GPU Backend) ✅ RELEASED (2025-11-28)
        ↓ (transformer primitives)
-v0.3.0 (Transformer Primitives) ✅ CURRENT (2025-11-30)
+v0.3.0 (Transformer Primitives) ✅ RELEASED (2025-11-30)
        ↓ (attention layers)
-v0.4.0 (Multi-Head Attention + Advanced Layers)
-       ↓ (cross-platform GPU + ONNX)
-v0.5.0 (Linux/macOS WebGPU + ONNX Import)
-       ↓ (feature completion + optimization)
-v0.6.0-v0.9.0 (Training utilities + API stabilization)
+v0.4.0 (Attention Mechanisms) ✅ RELEASED (2025-12-01)
+       ↓ (LLM support)
+v0.5.0 (LLM Support) ✅ RELEASED (2025-12-01)
+       ↓ (model serialization)
+v0.5.4 (Model Serialization) ✅ RELEASED (2025-12-03)
+       ↓ (WebGPU performance)
+v0.5.5 (WebGPU Performance) ✅ CURRENT (2025-12-03)
+       ↓ (ONNX interoperability)
+v0.6.0 (ONNX Import/Export + Quantization) → Q1 2026
+       ↓ (production optimization)
+v0.7.0-v0.9.0 (Metal backend, Flash Attention, Distributed)
        ↓ (production validation period - 12+ months)
 v1.0.0 LTS → Long-term support (2027-2028)
 ```
@@ -81,17 +87,42 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - **31 public API operations**: MulScalar, Greater/Gt, Int32, etc.
 - **Enables**: LLaMA, Mistral, GPT, HRM architectures
 
-**v0.4.0** = Attention Mechanisms & Advanced Layers
-- Multi-head attention (MHA)
-- Scaled dot-product attention
-- KV-cache for efficient inference
-- Layer normalization variants
-- Advanced positional encodings
+**v0.4.0** = Attention Mechanisms ✅ RELEASED
+- Multi-Head Attention (MHA) with Q, K, V projections
+- Scaled Dot-Product Attention (SDPA)
+- KV-Cache for efficient inference (3.94x speedup)
+- Layer Normalization variants
+- Positional Encodings: RoPE, ALiBi, Sinusoidal, Learned
+- Transformer Block with FFN
+- BatchMatMul for 3D/4D tensors
 
-**v0.5.0** = Cross-Platform GPU & ONNX Import
-- Linux/macOS WebGPU support
-- ONNX model import
-- Pre-trained model loading
+**v0.5.0** = LLM Support ✅ RELEASED
+- Grouped Query Attention (GQA) - LLaMA 2/3, Mistral
+- SwiGLU FFN with GLU variants (GeGLU, ReGLU)
+- GGUF Model Loader (v3 format)
+- Tokenizers: TikToken, BPE, HuggingFace
+- Sampling: Temperature, Top-K, Top-P, Min-P, Repetition Penalty
+- TextGenerator with streaming API
+- **Production-ready LLM inference pipeline**
+
+**v0.5.4** = Model Serialization ✅ RELEASED
+- Born Native Format v2 (.born) with SHA-256 checksum
+- Security validation (offset overlap, bounds check)
+- Memory-mapped reader for 70GB+ models
+- Checkpoint API for training resume
+- SafeTensors export for HuggingFace
+
+**v0.5.5** = WebGPU Performance ✅ CURRENT
+- Multi-dimensional Transpose on GPU (3D/4D/5D/6D)
+- Expand (broadcasting) on GPU
+- ~60x speedup for attention operations
+- Eliminated CPU fallback for transformer training
+
+**v0.6.0** = ONNX Import/Export + Quantization → Q1 2026
+- ONNX model import (PyTorch/TensorFlow)
+- ONNX export for interoperability
+- INT8/FP16 quantization
+- Model Zoo with pre-trained models
 
 **v1.0.0** = Production LTS
 - Stable API guarantees

@@ -1804,3 +1804,325 @@ func (b *Backend) transposeInt32(t *tensor.RawTensor, axes []int) *tensor.RawTen
 
 	return result
 }
+
+// runTransposeND executes N-dimensional matrix transpose on GPU.
+// Supports up to 6D tensors with arbitrary axes permutation.
+//
+//nolint:gocognit,gocyclo,cyclop,funlen // Complex GPU setup logic - unavoidable for parameter packing
+func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.RawTensor, error) {
+	shape := input.Shape()
+	ndim := len(shape)
+
+	if ndim > 6 {
+		return nil, fmt.Errorf("webgpu: transposeND supports up to 6D tensors, got %dD", ndim)
+	}
+
+	// Default axes: reverse all dimensions
+	if len(axes) == 0 {
+		axes = make([]int, ndim)
+		for i := 0; i < ndim; i++ {
+			axes[i] = ndim - 1 - i
+		}
+	}
+
+	if len(axes) != ndim {
+		return nil, fmt.Errorf("webgpu: transpose axes length must match tensor dimensions")
+	}
+
+	// Validate axes
+	seen := make(map[int]bool)
+	for _, ax := range axes {
+		if ax < 0 || ax >= ndim {
+			return nil, fmt.Errorf("webgpu: axis %d out of range for %dD tensor", ax, ndim)
+		}
+		if seen[ax] {
+			return nil, fmt.Errorf("webgpu: duplicate axis %d", ax)
+		}
+		seen[ax] = true
+	}
+
+	// Compute new shape
+	newShape := make(tensor.Shape, ndim)
+	for i, ax := range axes {
+		newShape[i] = shape[ax]
+	}
+
+	// Choose shader based on dtype
+	var shaderName, shaderCode string
+	switch input.DType() {
+	case tensor.Float32:
+		shaderName = "transposeND"
+		shaderCode = transposeNDShader
+	case tensor.Int32:
+		shaderName = "transposeND_int32"
+		shaderCode = transposeNDShaderInt32
+	default:
+		return nil, fmt.Errorf("webgpu: transposeND unsupported dtype %s", input.DType())
+	}
+
+	// Compile shader and get pipeline
+	shader := b.compileShader(shaderName, shaderCode)
+	pipeline := b.getOrCreatePipeline(shaderName, shader)
+
+	// Create GPU buffers
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	defer bufferInput.Release()
+
+	//nolint:gosec // G115: Safe conversion, ByteSize() returns non-negative int
+	resultSize := uint64(input.ByteSize())
+	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Size:  resultSize,
+	})
+	defer bufferResult.Release()
+
+	// Create uniform buffer for params
+	// Layout: ndim, total_elements, shapes[6], input_strides[6], output_strides[6], axes[6]
+	params := make([]byte, 4*26) // 26 u32 values * 4 bytes
+	inputStrides := shape.ComputeStrides()
+	outputStrides := newShape.ComputeStrides()
+
+	binary.LittleEndian.PutUint32(params[0:4], uint32(ndim))
+	//nolint:gosec // G115: shape.NumElements() is always positive and fits in uint32
+	binary.LittleEndian.PutUint32(params[4:8], uint32(shape.NumElements()))
+
+	// Pack input shape (6 slots)
+	for i := 0; i < 6; i++ {
+		if i < len(shape) {
+			//nolint:gosec // G115: Safe conversions, dimensions are non-negative
+			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(shape[i]))
+		} else {
+			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], 1)
+		}
+	}
+
+	// Pack input strides (6 slots)
+	for i := 0; i < 6; i++ {
+		if i < len(inputStrides) {
+			//nolint:gosec // G115: Safe conversions, strides are non-negative
+			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i]))
+		} else {
+			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], 1)
+		}
+	}
+
+	// Pack output strides (6 slots)
+	for i := 0; i < 6; i++ {
+		if i < len(outputStrides) {
+			//nolint:gosec // G115: Safe conversions, strides are non-negative
+			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i]))
+		} else {
+			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], 1)
+		}
+	}
+
+	// Pack axes (6 slots)
+	for i := 0; i < 6; i++ {
+		if i < len(axes) {
+			//nolint:gosec // G115: Safe conversions, axes are non-negative
+			binary.LittleEndian.PutUint32(params[80+i*4:84+i*4], uint32(axes[i]))
+		} else {
+			binary.LittleEndian.PutUint32(params[80+i*4:84+i*4], 0)
+		}
+	}
+
+	bufferParams := b.createUniformBuffer(params)
+	defer bufferParams.Release()
+
+	// Get bind group layout and create bind group
+	bindGroupLayout := pipeline.GetBindGroupLayout(0)
+	paramsSize := uint64(len(params))
+	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
+		wgpu.BufferBindingEntry(0, bufferInput, 0, resultSize),
+		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
+		wgpu.BufferBindingEntry(2, bufferParams, 0, paramsSize),
+	})
+	defer bindGroup.Release()
+
+	// Execute compute pass
+	encoder := b.device.CreateCommandEncoder(nil)
+	computePass := encoder.BeginComputePass(nil)
+
+	computePass.SetPipeline(pipeline)
+	computePass.SetBindGroup(0, bindGroup, nil)
+
+	// Calculate workgroup count (1D workgroups, 256 threads each)
+	//nolint:gosec // G115: shape.NumElements() is always positive and fits in uint32
+	numElements := uint32(shape.NumElements())
+	workgroups := uint32(math.Ceil(float64(numElements) / 256.0))
+	computePass.DispatchWorkgroups(workgroups, 1, 1)
+	computePass.End()
+
+	cmdBuffer := encoder.Finish(nil)
+	b.queue.Submit(cmdBuffer)
+
+	// Read result back from GPU
+	resultData, err := b.readBuffer(bufferResult, resultSize)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create result tensor with transposed shape
+	result, err := tensor.NewRaw(newShape, input.DType(), tensor.WebGPU)
+	if err != nil {
+		return nil, err
+	}
+
+	copy(result.Data(), resultData)
+	return result, nil
+}
+
+// runExpand executes NumPy-style broadcasting on GPU.
+// Expands tensor to new shape by broadcasting dimensions of size 1.
+//
+//nolint:gocognit,gocyclo,cyclop,funlen // Complex GPU setup logic - unavoidable for parameter packing
+func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*tensor.RawTensor, error) {
+	shape := input.Shape()
+
+	// Validate shapes are compatible for broadcasting
+	if len(newShape) < len(shape) {
+		return nil, fmt.Errorf("webgpu: expand new shape must have at least as many dimensions")
+	}
+
+	if len(newShape) > 6 {
+		return nil, fmt.Errorf("webgpu: expand supports up to 6D tensors, got %dD", len(newShape))
+	}
+
+	// Pad source shape to match destination dimensions
+	dimDiff := len(newShape) - len(shape)
+	paddedShape := make(tensor.Shape, len(newShape))
+	for i := 0; i < dimDiff; i++ {
+		paddedShape[i] = 1
+	}
+	for i := 0; i < len(shape); i++ {
+		paddedShape[dimDiff+i] = shape[i]
+	}
+
+	// Validate broadcasting compatibility
+	for i := 0; i < len(newShape); i++ {
+		if paddedShape[i] != 1 && paddedShape[i] != newShape[i] {
+			return nil, fmt.Errorf("webgpu: expand incompatible shapes: %v -> %v", shape, newShape)
+		}
+	}
+
+	// Choose shader based on dtype
+	var shaderName, shaderCode string
+	switch input.DType() {
+	case tensor.Float32:
+		shaderName = "expand"
+		shaderCode = expandShader
+	case tensor.Int32:
+		shaderName = "expand_int32"
+		shaderCode = expandShaderInt32
+	default:
+		return nil, fmt.Errorf("webgpu: expand unsupported dtype %s", input.DType())
+	}
+
+	// Compile shader and get pipeline
+	shader := b.compileShader(shaderName, shaderCode)
+	pipeline := b.getOrCreatePipeline(shaderName, shader)
+
+	// Create GPU buffers
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	defer bufferInput.Release()
+
+	// Calculate result size
+	resultNumElements := newShape.NumElements()
+	//nolint:gosec // G115: Safe conversion, element size is small constant
+	elementSize := uint64(input.DType().Size())
+	//nolint:gosec // G115: Safe conversion, NumElements() is non-negative
+	resultSize := uint64(resultNumElements) * elementSize
+
+	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Size:  resultSize,
+	})
+	defer bufferResult.Release()
+
+	// Create uniform buffer for params
+	// Layout: ndim, total_elements, input_shape[6], input_strides[6], output_strides[6]
+	params := make([]byte, 4*20) // 20 u32 values * 4 bytes
+	inputStrides := paddedShape.ComputeStrides()
+	outputStrides := newShape.ComputeStrides()
+
+	//nolint:gosec // G115: Safe conversions, dimensions and counts are non-negative
+	binary.LittleEndian.PutUint32(params[0:4], uint32(len(newShape)))
+	//nolint:gosec // G115: Safe conversions, dimensions and counts are non-negative
+	binary.LittleEndian.PutUint32(params[4:8], uint32(resultNumElements))
+
+	// Pack input shape (6 slots) - use paddedShape
+	for i := 0; i < 6; i++ {
+		if i < len(paddedShape) {
+			//nolint:gosec // G115: Safe conversions, dimensions are non-negative
+			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(paddedShape[i]))
+		} else {
+			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], 1)
+		}
+	}
+
+	// Pack input strides (6 slots)
+	for i := 0; i < 6; i++ {
+		if i < len(inputStrides) {
+			//nolint:gosec // G115: Safe conversions, strides are non-negative
+			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i]))
+		} else {
+			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], 1)
+		}
+	}
+
+	// Pack output strides (6 slots)
+	for i := 0; i < 6; i++ {
+		if i < len(outputStrides) {
+			//nolint:gosec // G115: Safe conversions, strides are non-negative
+			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i]))
+		} else {
+			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], 1)
+		}
+	}
+
+	bufferParams := b.createUniformBuffer(params)
+	defer bufferParams.Release()
+
+	// Get bind group layout and create bind group
+	bindGroupLayout := pipeline.GetBindGroupLayout(0)
+
+	//nolint:gosec // G115: input.ByteSize() is always positive and fits in uint64
+	inputSize := uint64(input.ByteSize())
+	paramsSize2 := uint64(len(params))
+	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
+		wgpu.BufferBindingEntry(0, bufferInput, 0, inputSize),
+		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
+		wgpu.BufferBindingEntry(2, bufferParams, 0, paramsSize2),
+	})
+	defer bindGroup.Release()
+
+	// Execute compute pass
+	encoder := b.device.CreateCommandEncoder(nil)
+	computePass := encoder.BeginComputePass(nil)
+
+	computePass.SetPipeline(pipeline)
+	computePass.SetBindGroup(0, bindGroup, nil)
+
+	// Calculate workgroup count (1D workgroups, 256 threads each)
+	workgroups := uint32(math.Ceil(float64(resultNumElements) / 256.0))
+	computePass.DispatchWorkgroups(workgroups, 1, 1)
+	computePass.End()
+
+	cmdBuffer := encoder.Finish(nil)
+	b.queue.Submit(cmdBuffer)
+
+	// Read result back from GPU
+	resultData, err := b.readBuffer(bufferResult, resultSize)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create result tensor
+	result, err := tensor.NewRaw(newShape, input.DType(), tensor.WebGPU)
+	if err != nil {
+		return nil, err
+	}
+
+	copy(result.Data(), resultData)
+	return result, nil
+}

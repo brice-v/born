@@ -126,132 +126,60 @@ func (b *Backend) Reshape(t *tensor.RawTensor, newShape tensor.Shape) *tensor.Ra
 }
 
 // Transpose transposes the tensor by permuting its dimensions.
-// Supports 2D tensors on GPU, falls back to CPU for multi-dimensional.
+// GPU-accelerated for 2D (optimized) and ND tensors (up to 6D).
 func (b *Backend) Transpose(t *tensor.RawTensor, axes ...int) *tensor.RawTensor {
 	shape := t.Shape()
 	ndim := len(shape)
 
-	// Multi-dimensional: fall back to CPU
-	if ndim != 2 {
-		return b.transposeOnCPU(t, axes)
+	// Check for no-op case early
+	if isNoOpTranspose(axes, ndim) {
+		return t
 	}
 
-	// 2D transpose (matrix): GPU accelerated
-	if len(axes) > 0 {
-		if len(axes) != 2 || !isValid2DAxes(axes) {
-			panic("webgpu: Transpose: invalid axes for 2D tensor")
+	// 2D transpose (matrix): use optimized 2D shader
+	if ndim == 2 {
+		validate2DTransposeAxes(axes)
+		result, err := b.runTranspose(t)
+		if err != nil {
+			panic("webgpu: Transpose: " + err.Error())
 		}
-		// (0, 1) means no-op
-		if axes[0] == 0 && axes[1] == 1 {
-			return t
-		}
+		return result
 	}
 
-	result, err := b.runTranspose(t)
+	// Multi-dimensional (3D, 4D, etc.): use GPU-accelerated ND transpose
+	result, err := b.runTransposeND(t, axes)
 	if err != nil {
 		panic("webgpu: Transpose: " + err.Error())
 	}
 	return result
+}
+
+// isNoOpTranspose checks if transpose is a no-op.
+func isNoOpTranspose(axes []int, ndim int) bool {
+	if len(axes) == 0 {
+		return false
+	}
+	if len(axes) != ndim {
+		return false
+	}
+	for i, ax := range axes {
+		if ax != i {
+			return false
+		}
+	}
+	return true
+}
+
+// validate2DTransposeAxes validates axes for 2D transpose.
+func validate2DTransposeAxes(axes []int) {
+	if len(axes) > 0 && (len(axes) != 2 || !isValid2DAxes(axes)) {
+		panic("webgpu: Transpose: invalid axes for 2D tensor")
+	}
 }
 
 // isValid2DAxes checks if axes are valid for 2D transpose.
 func isValid2DAxes(axes []int) bool {
 	return (axes[0] == 0 && axes[1] == 1) || (axes[0] == 1 && axes[1] == 0)
-}
-
-// transposeOnCPU performs multi-dimensional transpose on CPU.
-func (b *Backend) transposeOnCPU(t *tensor.RawTensor, axes []int) *tensor.RawTensor {
-	shape := t.Shape()
-	ndim := len(shape)
-
-	// Default axes: reverse all dimensions
-	if len(axes) == 0 {
-		axes = make([]int, ndim)
-		for i := 0; i < ndim; i++ {
-			axes[i] = ndim - 1 - i
-		}
-	}
-
-	if len(axes) != ndim {
-		panic("webgpu: Transpose: axes length must match tensor dimensions")
-	}
-
-	// Compute new shape
-	newShape := make(tensor.Shape, ndim)
-	for i, ax := range axes {
-		if ax < 0 || ax >= ndim {
-			panic("webgpu: Transpose: axis out of range")
-		}
-		newShape[i] = shape[ax]
-	}
-
-	// Create result tensor
-	result, err := tensor.NewRaw(newShape, t.DType(), tensor.WebGPU)
-	if err != nil {
-		panic("webgpu: Transpose: " + err.Error())
-	}
-
-	// Perform transpose on CPU
-	switch t.DType() {
-	case tensor.Float32:
-		transposeFloat32(t.AsFloat32(), result.AsFloat32(), shape, newShape, axes)
-	case tensor.Int32:
-		transposeInt32(t.AsInt32(), result.AsInt32(), shape, newShape, axes)
-	default:
-		panic("webgpu: Transpose: unsupported dtype for multi-dimensional transpose")
-	}
-
-	return result
-}
-
-// transposeFloat32 performs general transpose for float32 tensors.
-func transposeFloat32(src, dst []float32, srcShape, dstShape tensor.Shape, axes []int) {
-	srcStrides := srcShape.ComputeStrides()
-	dstStrides := dstShape.ComputeStrides()
-	ndim := len(srcShape)
-	numElements := srcShape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		// Convert flat index to multi-dimensional coordinates in dst
-		dstIdx := i
-		coords := make([]int, ndim)
-		for d := 0; d < ndim; d++ {
-			coords[d] = dstIdx / dstStrides[d]
-			dstIdx %= dstStrides[d]
-		}
-
-		// Map dst coordinates to src coordinates using inverse of axes
-		srcIdx := 0
-		for d := 0; d < ndim; d++ {
-			srcIdx += coords[d] * srcStrides[axes[d]]
-		}
-
-		dst[i] = src[srcIdx]
-	}
-}
-
-// transposeInt32 performs general transpose for int32 tensors.
-func transposeInt32(src, dst []int32, srcShape, dstShape tensor.Shape, axes []int) {
-	srcStrides := srcShape.ComputeStrides()
-	dstStrides := dstShape.ComputeStrides()
-	ndim := len(srcShape)
-	numElements := srcShape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		dstIdx := i
-		coords := make([]int, ndim)
-		for d := 0; d < ndim; d++ {
-			coords[d] = dstIdx / dstStrides[d]
-			dstIdx %= dstStrides[d]
-		}
-
-		srcIdx := 0
-		for d := 0; d < ndim; d++ {
-			srcIdx += coords[d] * srcStrides[axes[d]]
-		}
-
-		dst[i] = src[srcIdx]
-	}
 }
 
 // ReLU applies ReLU activation: max(0, x).

@@ -1146,3 +1146,335 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 }
 `
+
+// transposeNDShader performs N-dimensional transpose with arbitrary axes permutation.
+// Supports up to 6D tensors (covers 99% of ML use cases).
+const transposeNDShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    ndim: u32,
+    total_elements: u32,
+    input_shape_0: u32,
+    input_shape_1: u32,
+    input_shape_2: u32,
+    input_shape_3: u32,
+    input_shape_4: u32,
+    input_shape_5: u32,
+    input_strides_0: u32,
+    input_strides_1: u32,
+    input_strides_2: u32,
+    input_strides_3: u32,
+    input_strides_4: u32,
+    input_strides_5: u32,
+    output_strides_0: u32,
+    output_strides_1: u32,
+    output_strides_2: u32,
+    output_strides_3: u32,
+    output_strides_4: u32,
+    output_strides_5: u32,
+    axes_0: u32,
+    axes_1: u32,
+    axes_2: u32,
+    axes_3: u32,
+    axes_4: u32,
+    axes_5: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let idx = global_id.x;
+    if (idx >= params.total_elements) {
+        return;
+    }
+
+    // Convert output linear index to coordinates
+    var coords: array<u32, 6>;
+    var temp = idx;
+
+    // Load output strides into array for indexing
+    var output_strides: array<u32, 6>;
+    output_strides[0] = params.output_strides_0;
+    output_strides[1] = params.output_strides_1;
+    output_strides[2] = params.output_strides_2;
+    output_strides[3] = params.output_strides_3;
+    output_strides[4] = params.output_strides_4;
+    output_strides[5] = params.output_strides_5;
+
+    // Load input strides
+    var input_strides: array<u32, 6>;
+    input_strides[0] = params.input_strides_0;
+    input_strides[1] = params.input_strides_1;
+    input_strides[2] = params.input_strides_2;
+    input_strides[3] = params.input_strides_3;
+    input_strides[4] = params.input_strides_4;
+    input_strides[5] = params.input_strides_5;
+
+    // Load axes permutation
+    var axes: array<u32, 6>;
+    axes[0] = params.axes_0;
+    axes[1] = params.axes_1;
+    axes[2] = params.axes_2;
+    axes[3] = params.axes_3;
+    axes[4] = params.axes_4;
+    axes[5] = params.axes_5;
+
+    // Calculate coordinates in output space
+    for (var d: u32 = 0u; d < params.ndim; d = d + 1u) {
+        coords[d] = temp / output_strides[d];
+        temp = temp % output_strides[d];
+    }
+
+    // Map output coordinates to input index using axes permutation
+    var input_idx: u32 = 0u;
+    for (var d: u32 = 0u; d < params.ndim; d = d + 1u) {
+        input_idx = input_idx + coords[d] * input_strides[axes[d]];
+    }
+
+    result[idx] = input[input_idx];
+}
+`
+
+// transposeNDShaderInt32 performs N-dimensional transpose for int32 tensors.
+const transposeNDShaderInt32 = `
+@group(0) @binding(0) var<storage, read> input: array<i32>;
+@group(0) @binding(1) var<storage, read_write> result: array<i32>;
+
+struct Params {
+    ndim: u32,
+    total_elements: u32,
+    input_shape_0: u32,
+    input_shape_1: u32,
+    input_shape_2: u32,
+    input_shape_3: u32,
+    input_shape_4: u32,
+    input_shape_5: u32,
+    input_strides_0: u32,
+    input_strides_1: u32,
+    input_strides_2: u32,
+    input_strides_3: u32,
+    input_strides_4: u32,
+    input_strides_5: u32,
+    output_strides_0: u32,
+    output_strides_1: u32,
+    output_strides_2: u32,
+    output_strides_3: u32,
+    output_strides_4: u32,
+    output_strides_5: u32,
+    axes_0: u32,
+    axes_1: u32,
+    axes_2: u32,
+    axes_3: u32,
+    axes_4: u32,
+    axes_5: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let idx = global_id.x;
+    if (idx >= params.total_elements) {
+        return;
+    }
+
+    var coords: array<u32, 6>;
+    var temp = idx;
+
+    var output_strides: array<u32, 6>;
+    output_strides[0] = params.output_strides_0;
+    output_strides[1] = params.output_strides_1;
+    output_strides[2] = params.output_strides_2;
+    output_strides[3] = params.output_strides_3;
+    output_strides[4] = params.output_strides_4;
+    output_strides[5] = params.output_strides_5;
+
+    var input_strides: array<u32, 6>;
+    input_strides[0] = params.input_strides_0;
+    input_strides[1] = params.input_strides_1;
+    input_strides[2] = params.input_strides_2;
+    input_strides[3] = params.input_strides_3;
+    input_strides[4] = params.input_strides_4;
+    input_strides[5] = params.input_strides_5;
+
+    var axes: array<u32, 6>;
+    axes[0] = params.axes_0;
+    axes[1] = params.axes_1;
+    axes[2] = params.axes_2;
+    axes[3] = params.axes_3;
+    axes[4] = params.axes_4;
+    axes[5] = params.axes_5;
+
+    for (var d: u32 = 0u; d < params.ndim; d = d + 1u) {
+        coords[d] = temp / output_strides[d];
+        temp = temp % output_strides[d];
+    }
+
+    var input_idx: u32 = 0u;
+    for (var d: u32 = 0u; d < params.ndim; d = d + 1u) {
+        input_idx = input_idx + coords[d] * input_strides[axes[d]];
+    }
+
+    result[idx] = input[input_idx];
+}
+`
+
+// expandShader performs NumPy-style broadcasting to expand tensor to new shape.
+// Supports up to 6D tensors.
+const expandShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    ndim: u32,
+    total_elements: u32,
+    input_shape_0: u32,
+    input_shape_1: u32,
+    input_shape_2: u32,
+    input_shape_3: u32,
+    input_shape_4: u32,
+    input_shape_5: u32,
+    input_strides_0: u32,
+    input_strides_1: u32,
+    input_strides_2: u32,
+    input_strides_3: u32,
+    input_strides_4: u32,
+    input_strides_5: u32,
+    output_strides_0: u32,
+    output_strides_1: u32,
+    output_strides_2: u32,
+    output_strides_3: u32,
+    output_strides_4: u32,
+    output_strides_5: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let out_idx = global_id.x;
+    if (out_idx >= params.total_elements) {
+        return;
+    }
+
+    // Load shapes and strides
+    var input_shape: array<u32, 6>;
+    input_shape[0] = params.input_shape_0;
+    input_shape[1] = params.input_shape_1;
+    input_shape[2] = params.input_shape_2;
+    input_shape[3] = params.input_shape_3;
+    input_shape[4] = params.input_shape_4;
+    input_shape[5] = params.input_shape_5;
+
+    var input_strides: array<u32, 6>;
+    input_strides[0] = params.input_strides_0;
+    input_strides[1] = params.input_strides_1;
+    input_strides[2] = params.input_strides_2;
+    input_strides[3] = params.input_strides_3;
+    input_strides[4] = params.input_strides_4;
+    input_strides[5] = params.input_strides_5;
+
+    var output_strides: array<u32, 6>;
+    output_strides[0] = params.output_strides_0;
+    output_strides[1] = params.output_strides_1;
+    output_strides[2] = params.output_strides_2;
+    output_strides[3] = params.output_strides_3;
+    output_strides[4] = params.output_strides_4;
+    output_strides[5] = params.output_strides_5;
+
+    // Convert output index to coordinates
+    var coords: array<u32, 6>;
+    var temp = out_idx;
+    for (var d: u32 = 0u; d < params.ndim; d = d + 1u) {
+        coords[d] = temp / output_strides[d];
+        temp = temp % output_strides[d];
+    }
+
+    // Map to input index with broadcasting (dim=1 broadcasts to any size)
+    var in_idx: u32 = 0u;
+    for (var d: u32 = 0u; d < params.ndim; d = d + 1u) {
+        // If input dim is 1, use coord 0 (broadcast), otherwise use actual coord
+        let in_coord = select(coords[d], 0u, input_shape[d] == 1u);
+        in_idx = in_idx + in_coord * input_strides[d];
+    }
+
+    result[out_idx] = input[in_idx];
+}
+`
+
+// expandShaderInt32 performs broadcasting for int32 tensors.
+const expandShaderInt32 = `
+@group(0) @binding(0) var<storage, read> input: array<i32>;
+@group(0) @binding(1) var<storage, read_write> result: array<i32>;
+
+struct Params {
+    ndim: u32,
+    total_elements: u32,
+    input_shape_0: u32,
+    input_shape_1: u32,
+    input_shape_2: u32,
+    input_shape_3: u32,
+    input_shape_4: u32,
+    input_shape_5: u32,
+    input_strides_0: u32,
+    input_strides_1: u32,
+    input_strides_2: u32,
+    input_strides_3: u32,
+    input_strides_4: u32,
+    input_strides_5: u32,
+    output_strides_0: u32,
+    output_strides_1: u32,
+    output_strides_2: u32,
+    output_strides_3: u32,
+    output_strides_4: u32,
+    output_strides_5: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let out_idx = global_id.x;
+    if (out_idx >= params.total_elements) {
+        return;
+    }
+
+    var input_shape: array<u32, 6>;
+    input_shape[0] = params.input_shape_0;
+    input_shape[1] = params.input_shape_1;
+    input_shape[2] = params.input_shape_2;
+    input_shape[3] = params.input_shape_3;
+    input_shape[4] = params.input_shape_4;
+    input_shape[5] = params.input_shape_5;
+
+    var input_strides: array<u32, 6>;
+    input_strides[0] = params.input_strides_0;
+    input_strides[1] = params.input_strides_1;
+    input_strides[2] = params.input_strides_2;
+    input_strides[3] = params.input_strides_3;
+    input_strides[4] = params.input_strides_4;
+    input_strides[5] = params.input_strides_5;
+
+    var output_strides: array<u32, 6>;
+    output_strides[0] = params.output_strides_0;
+    output_strides[1] = params.output_strides_1;
+    output_strides[2] = params.output_strides_2;
+    output_strides[3] = params.output_strides_3;
+    output_strides[4] = params.output_strides_4;
+    output_strides[5] = params.output_strides_5;
+
+    var coords: array<u32, 6>;
+    var temp = out_idx;
+    for (var d: u32 = 0u; d < params.ndim; d = d + 1u) {
+        coords[d] = temp / output_strides[d];
+        temp = temp % output_strides[d];
+    }
+
+    var in_idx: u32 = 0u;
+    for (var d: u32 = 0u; d < params.ndim; d = d + 1u) {
+        let in_coord = select(coords[d], 0u, input_shape[d] == 1u);
+        in_idx = in_idx + in_coord * input_strides[d];
+    }
+
+    result[out_idx] = input[in_idx];
+}
+`

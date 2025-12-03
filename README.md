@@ -18,8 +18,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🎉 **v0.5.4 Released!** (Model Serialization - Save/Load/Checkpoints!)
-**Latest**: 💾 Save/Load models, training checkpoints, SafeTensors export for HuggingFace
+**Project Status**: 🚀 **v0.5.5 Ready!** (WebGPU Performance - Multi-dim Transpose/Expand on GPU!)
+**Latest**: ⚡ GPU-accelerated multi-dimensional operations for transformer training
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -71,6 +71,12 @@ prediction := model.Predict(image)
 - **SafeTensors Export** - HuggingFace compatible with `serialization.WriteSafeTensors()`
 - **Optimizer State** - SGD/Adam momentum and moments preserved in checkpoints
 - **Metadata Support** - Custom metadata in model files
+
+### WebGPU Performance (v0.5.5) 🆕
+- **Multi-dim Transpose** - GPU-accelerated 3D/4D/5D/6D tensor transpose
+- **Expand on GPU** - NumPy-style broadcasting with WGSL shaders
+- **~60x Speedup** - Eliminated CPU fallback for transformer training
+- **Full dtype support** - float32 and int32 operations
 
 ### GPU Backend (v0.5.3)
 - **Complete WebGPU** - All operations for LLM inference on GPU
