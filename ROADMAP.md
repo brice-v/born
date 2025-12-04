@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2025-12-04 | **Current Version**: v0.6.0 | **Strategy**: Core Features → GPU Support → LLM Support → ONNX → v1.0.0 LTS | **Milestone**: v0.6.0 RELEASED! (2025-12-04) → v1.0.0 LTS (2027-2028)
+**Last Updated**: 2025-12-04 | **Current Version**: v0.6.0 | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.6.0 RELEASED! → v0.7.0 (Jan 2026) → v1.0.0 LTS (After API Freeze)
 
 ---
 
@@ -53,10 +53,16 @@ v0.5.4 (Model Serialization) ✅ RELEASED (2025-12-03)
 v0.5.5 (WebGPU Performance) ✅ RELEASED (2025-12-03)
        ↓ (ONNX import + lazy GPU)
 v0.6.0 (ONNX Import + Lazy GPU Mode) ✅ CURRENT (2025-12-04)
-       ↓ (production optimization)
-v0.7.0-v0.9.0 (Metal backend, Flash Attention, Distributed)
-       ↓ (production validation period - 12+ months)
-v1.0.0 LTS → Long-term support (2027-2028)
+       ↓ (inference optimization)
+v0.7.0 (Flash Attention, Speculative Decoding, GGUF) → Jan 2026
+       ↓ (quantization & efficiency)
+v0.8.0 (Quantization, Model Zoo, Jupyter) → Feb 2026
+       ↓ (production serving)
+v0.9.0 (PagedAttention, Continuous Batching, Kernel Fusion) → Mar 2026
+       ↓ (scale & stability)
+v0.10.0 (Multi-GPU, SIMD, Gradient Checkpointing) → Apr 2026
+       ↓ (API freeze period)
+v1.0.0 LTS → After API stabilization
 ```
 
 ### Critical Milestones
@@ -126,17 +132,36 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - GPU memory management (automatic cleanup)
 - 50+ raw tensor operations
 
-**v0.7.0** = Production Optimization → Q1 2026
-- INT8/FP16 quantization
-- Linux/macOS WebGPU support
-- ONNX export for interoperability
-- Model Zoo with pre-trained models
+**v0.7.0** = Inference Optimization → January 2026
+- Flash Attention 2 (2x speedup, 128K+ context)
+- Speculative Decoding (2-4x inference speedup)
+- GGUF format import (llama.cpp ecosystem)
 
-**v1.0.0** = Production LTS
+**v0.8.0** = Quantization & Efficiency → February 2026
+- Post-training quantization (GPTQ/AWQ, 4x smaller)
+- KV Cache compression (2-4x memory reduction)
+- Jupyter Kernel (interactive ML development)
+- Model Zoo (10+ pre-trained models)
+
+**v0.9.0** = Production Serving → March 2026
+- PagedAttention (>90% GPU utilization)
+- Continuous Batching (10-23x throughput)
+- Kernel Fusion (30-50% speedup)
+- MoE Support (Mixtral, DeepSeek)
+- OpenAI-compatible API server
+
+**v0.10.0** = Scale & Stability → April 2026
+- Multi-GPU Data Parallelism (pure Go)
+- CPU SIMD Optimization (AVX2/Neon)
+- Gradient Checkpointing (80% memory savings)
+- Training Dashboard (TUI)
+- Comprehensive documentation
+
+**v1.0.0** = LTS (After API Freeze)
+- API freeze period (community feedback)
 - Stable API guarantees
 - 3+ years support
-- Performance optimizations
-- Complete documentation
+- Production hardening
 
 **Why v0.2.0?**: GPU acceleration is critical for production ML. WebGPU provides zero-CGO GPU support, making Born the first Go ML framework with true GPU acceleration without C dependencies.
 
@@ -265,136 +290,156 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-### **v0.4.0 - Attention Mechanisms** (Q1 2026) [NEXT]
+### **v0.7.0 - Inference Optimization** (January 2026) [NEXT]
 
-**Goal**: Complete transformer architecture with attention layers
+**Goal**: State-of-the-art inference performance
 
-**Duration**: 6-8 weeks
+**Duration**: ~7 weeks
 
-**Planned Features**:
-1. **Multi-Head Attention (MHA)** (CRITICAL)
-   - Scaled dot-product attention
-   - Multiple attention heads
-   - Parallel head computation
-   - Gradient efficient implementation
+**Key Features**:
+1. **Flash Attention 2** (CRITICAL)
+   - Tiled attention algorithm for O(N) memory
+   - 2x speedup over standard attention
+   - 128K+ context length support
+   - WebGPU WGSL implementation
 
-2. **KV-Cache** (HIGH)
-   - Key-value caching for autoregressive generation
-   - Memory-efficient inference
-   - Dynamic cache management
-   - Prefix caching support
+2. **Speculative Decoding** (CRITICAL)
+   - Draft model generates K tokens
+   - Target model verifies in parallel
+   - 2-4x inference speedup
+   - Adaptive speculation length
 
-3. **Layer Normalization Variants** (MEDIUM)
-   - LayerNorm (standard)
-   - PreNorm / PostNorm patterns
-   - Gradient clipping support
-
-4. **Advanced Positional Encodings** (MEDIUM)
-   - Absolute positional embeddings
-   - Learned position embeddings
-   - ALiBi (Attention with Linear Biases)
+3. **GGUF Format Import** (CRITICAL)
+   - Direct llama.cpp model loading
+   - K-quant support (Q4_K_M, Q5_K_M, Q6_K)
+   - Metadata parsing and validation
+   - Pre-dequantized inference
 
 **Success Criteria**:
-- ✅ Complete transformer block working
-- ✅ GPT-2 architecture implementable
-- ✅ Efficient autoregressive generation
-- ✅ >70% test coverage maintained
-- ✅ 0 linter issues
+- ✅ Flash Attention 2 working on WebGPU
+- ✅ 2x attention speedup demonstrated
+- ✅ Speculative decoding with 2x+ speedup
+- ✅ GGUF models loading and running
 
-**Target**: Q1 2026
-
----
-
-### **v0.5.0 - Cross-Platform GPU & ONNX Import** (Q2 2026) [PLANNING]
-
-**Goal**: Linux/macOS GPU support and ONNX model import
-
-**Duration**: 8-12 weeks
-
-**Planned Features**:
-1. **Linux/macOS WebGPU** (CRITICAL)
-   - Vulkan backend for Linux
-   - Metal backend for macOS
-   - Cross-platform build system
-   - CI/CD for all platforms
-
-2. **ONNX Model Import** (HIGH)
-   - ONNX parser and loader
-   - Common layer support
-   - Pre-trained model loading
-   - PyTorch/TensorFlow model conversion
-
-3. **Performance Optimization** (MEDIUM)
-   - Kernel fusion where applicable
-   - Asynchronous operations
-   - Improved memory pooling
-
-**Success Criteria**:
-- ✅ WebGPU works on Linux/macOS
-- ✅ Import ResNet-50 from ONNX
-- ✅ Pre-trained ImageNet models working
-- ✅ Comprehensive benchmarks
-
-**Target**: Q2 2026
+**Target**: January 2026
 
 ---
 
-### **v0.6.0 - Training Stability** (Q2-Q3 2026) [FUTURE]
+### **v0.8.0 - Quantization & Efficiency** (February 2026)
 
-**Goal**: Essential training utilities and model persistence
+**Goal**: Production-ready quantization and developer experience
 
-**Planned Features**:
-- BatchNorm2D for stable training
-- Dropout regularization
-- Model serialization (save/load)
-- Learning rate scheduling
+**Duration**: ~8 weeks
 
-**Target**: Q2-Q3 2026
+**Key Features**:
+1. **Post-Training Quantization** (CRITICAL)
+   - GPTQ algorithm (4-bit, 8-bit)
+   - AWQ (Activation-aware quantization)
+   - 4x model size reduction
+   - Minimal accuracy loss (<1%)
 
----
+2. **KV Cache Compression** (CRITICAL)
+   - 4-bit/8-bit quantized KV cache
+   - 2-4x memory savings
+   - On-the-fly compression/decompression
 
-### **v0.7.0 - Distributed Training** (Q3-Q4 2026) [FUTURE]
+3. **Jupyter Kernel** (HIGH)
+   - Interactive ML development
+   - go-jupyter integration
+   - Rich output (plots, tensors)
 
-**Goal**: Multi-GPU and multi-node training
+4. **Model Zoo** (HIGH)
+   - 10+ pre-trained models
+   - Automatic download and caching
+   - Version management
 
-**Planned Features**:
-- Data Parallel training (DDP)
-- Model Parallel support
-- Gradient synchronization
-- Multi-GPU performance optimization
-
-**Target**: Q3-Q4 2026
-
----
-
-### **v0.8.0 - v0.9.0 - Feature Completion & API Stabilization** (2027)
-
-**Goal**: Complete feature set and stabilize API for v1.0
-
-**Focus Areas**:
-1. **v0.8.0**: Additional NN layers (LSTM, GRU, advanced pooling)
-2. **v0.8.5**: Advanced optimizers (AdamW, LAMB, etc.)
-3. **v0.9.0**: API freeze, documentation completion, production hardening
-
-**Timeline**: Throughout 2027 (6-8 weeks per version)
-
-**Critical Phase**: API changes allowed until v0.9.0, then frozen for v1.0
+**Target**: February 2026
 
 ---
 
-### **v1.0.0 - Long-Term Support Release** (2027-2028)
+### **v0.9.0 - Production Serving** (March 2026)
+
+**Goal**: vLLM-class serving infrastructure
+
+**Duration**: ~10 weeks
+
+**Key Features**:
+1. **PagedAttention** (CRITICAL)
+   - OS-style paged KV cache
+   - >90% GPU utilization
+   - Near-zero memory waste
+
+2. **Continuous Batching** (CRITICAL)
+   - Iteration-level request scheduling
+   - 10-23x throughput improvement
+   - Dynamic batch size adjustment
+
+3. **Kernel Fusion** (CRITICAL)
+   - Automatic operation graph optimization
+   - 30-50% speedup
+   - Burn-style fusion patterns
+
+4. **MoE Support** (HIGH)
+   - Mixture of Experts architecture
+   - Mixtral, DeepSeek models
+   - Expert routing and load balancing
+
+5. **API Server** (HIGH)
+   - OpenAI-compatible REST API
+   - Streaming responses
+   - Multi-model serving
+
+**Target**: March 2026
+
+---
+
+### **v0.10.0 - Scale & Stability** (April 2026)
+
+**Goal**: Enterprise-ready scale and production hardening
+
+**Duration**: ~11 weeks
+
+**Key Features**:
+1. **Multi-GPU Data Parallelism** (CRITICAL)
+   - Pure Go implementation (no NCCL)
+   - Gradient all-reduce
+   - Linear scaling to 8+ GPUs
+
+2. **CPU SIMD Optimization** (HIGH)
+   - AVX2 (x86-64) optimized kernels
+   - Neon (ARM64/Apple Silicon)
+   - 10-50x CPU speedup
+
+3. **Gradient Checkpointing** (HIGH)
+   - 80% memory reduction
+   - Recompute activations during backward
+   - Automatic checkpointing strategy
+
+4. **Training Dashboard** (MEDIUM)
+   - Terminal-based TUI
+   - Live loss/accuracy curves
+   - GPU/CPU utilization monitoring
+
+5. **Comprehensive Documentation** (MEDIUM)
+   - Complete API reference
+   - 5+ tutorials
+   - 10+ examples
+   - Migration guides
+
+**Target**: April 2026
+
+---
+
+### **v1.0.0 - Long-Term Support Release** (After API Freeze)
 
 **Goal**: Production LTS with stability guarantees
 
-**Requirements** (STRICT - no rush to v1.0):
-- v0.9.x stable for 12+ months in production
-- Extensive community feedback (100+ real-world projects)
-- Zero critical bugs, minimal known issues
-- API battle-tested and proven stable
-- Complete documentation, tutorials, and examples
-- Performance on par with established frameworks
-- Multiple successful production deployments
-- Active contributor community (10+ regular contributors)
+**Prerequisites** (STRICT):
+- v0.10.0 stable and battle-tested
+- API freeze period (2-4 weeks community feedback)
+- Zero critical bugs
+- Complete documentation
+- Multiple production deployments
 
 **LTS Guarantees**:
 - ✅ API stability (no breaking changes in v1.x.x)
@@ -459,7 +504,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 **Development**:
 - Go 1.25+ required
 - golangci-lint for quality
-- CUDA Toolkit for GPU (v0.3.0+)
+- wgpu-native for WebGPU (v0.2.0+)
 
 ---
 
@@ -537,5 +582,5 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-*Version 3.0 (2025-11-30)*
-*Current: v0.3.0 (Transformer Primitives) | Phase: LLM Architecture Support | Next: v0.4.0 (Attention Mechanisms) | Target: v1.0.0 LTS (2027-2028)*
+*Version 4.0 (2025-12-04)*
+*Current: v0.6.0 (ONNX Import + Lazy GPU) | Next: v0.7.0 (Inference Optimization, Jan 2026) | Target: v1.0.0 LTS (After API Freeze)*

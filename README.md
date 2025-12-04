@@ -60,58 +60,33 @@ prediction := model.Predict(image)
 ### Core
 - **Pure Go** - No CGO dependencies, trivial cross-compilation
 - **Type Safe** - Generics-powered API for compile-time guarantees
-- **GPU Acceleration** - WebGPU backend with **35+ operations** (zero-CGO, 123x speedup)
 - **Autodiff** - Automatic differentiation via decorator pattern
 - **Production Ready** - Single binary deployment, fast startup
 - **WebAssembly** - Run inference in browsers natively
 
-### Model Serialization (v0.5.4) 🆕
-- **Save/Load Models** - Native `.born` format with `nn.Save()` / `nn.Load()`
-- **Training Checkpoints** - Resume training with `nn.SaveCheckpoint()` / `nn.LoadCheckpoint()`
-- **SafeTensors Export** - HuggingFace compatible with `serialization.WriteSafeTensors()`
-- **Optimizer State** - SGD/Adam momentum and moments preserved in checkpoints
-- **Metadata Support** - Custom metadata in model files
+### GPU Acceleration
+- **WebGPU Backend** - Zero-CGO GPU via [go-webgpu](https://github.com/go-webgpu/webgpu), 123x MatMul speedup
+- **38+ GPU Operations** - MatMul, BatchMatMul, Conv2D, MaxPool2D, Softmax, and more
+- **Lazy Evaluation** - GPU-resident tensors, command batching (~90s → <5s/step)
+- **Multi-dim Transpose** - GPU-accelerated 3D/4D/5D/6D tensors
+- **Automatic Memory** - `runtime.SetFinalizer` for GPU buffer cleanup
 
-### ONNX Import (v0.6.0) 🆕
-- **ONNX Parser** - Load `.onnx` model files directly
-- **30+ Operators** - ReLU, MatMul, Reshape, Softmax, Gather, etc.
-- **Model Inference** - Run PyTorch/TensorFlow models in Go
-- **Operator Registry** - Extensible operator system
-
-### Lazy GPU Mode (v0.6.0) 🆕
-- **GPU-Resident Tensors** - Data stays on GPU until explicitly needed
-- **Command Batching** - ~200 submits → 1-2 per chain (~90s → <5s/step!)
-- **Zero CPU Round-trips** - GPU→GPU copy for chained operations
-- **Automatic Memory Management** - `runtime.SetFinalizer` for cleanup
-
-### WebGPU Performance (v0.5.5)
-- **Multi-dim Transpose** - GPU-accelerated 3D/4D/5D/6D tensor transpose
-- **Expand on GPU** - NumPy-style broadcasting with WGSL shaders
-- **~60x Speedup** - Eliminated CPU fallback for transformer training
-- **Full dtype support** - float32 and int32 operations
-
-### GPU Backend (v0.5.3)
-- **Complete WebGPU** - All operations for LLM inference on GPU
-- **CNN Support** - Conv2D, MaxPool2D with WGSL compute shaders
-- **BatchMatMul** - 3D/4D tensor support for attention mechanisms
-- **Zero-CGO** - Pure Go via [go-webgpu](https://github.com/go-webgpu/webgpu)
-
-### LLM Support (v0.5.0) 🆕
-- **Grouped Query Attention (GQA)** - Memory-efficient attention (LLaMA 2/3, Mistral)
-- **SwiGLU FFN** - Modern FFN with gated activations (+ GeGLU, ReGLU, GLU)
-- **Model Loading** - GGUF format support, weight mapping for LLaMA/Mistral/DeepSeek
-- **Tokenizers** - TikToken, BPE, HuggingFace format, chat templates
-- **Sampling** - Temperature, Top-K, Top-P (nucleus), Min-P, repetition penalty
-- **Text Generation** - Streaming API, KV-cache integration, stop sequences
-
-### Transformer Architecture (v0.4.0)
-- **Multi-Head Attention (MHA)** - Full implementation with Q, K, V projections
-- **Scaled Dot-Product Attention** - Core attention with optional mask/dropout
+### LLM & Transformers
+- **Multi-Head Attention** - MHA, SDPA, Grouped Query Attention (GQA)
 - **KV-Cache** - Efficient autoregressive generation (3.94x speedup)
 - **Positional Encodings** - RoPE, ALiBi, Sinusoidal, Learned
-- **TransformerBlock** - Complete Pre-Norm/Post-Norm support
+- **Modern FFN** - SwiGLU, GeGLU, ReGLU with gated activations
 - **Normalizations** - LayerNorm, RMSNorm (LLaMA style)
-- **FFN** - Feed-Forward Networks with SiLU activation
+- **Tokenizers** - TikToken, BPE, HuggingFace format, chat templates
+- **Sampling** - Temperature, Top-K, Top-P, Min-P, repetition penalty
+- **Text Generation** - Streaming API, stop sequences
+
+### Model Import & Export
+- **ONNX Import** - Load PyTorch/TensorFlow models via `.onnx` (30+ operators)
+- **GGUF Loading** - Direct llama.cpp model support (LLaMA, Mistral, DeepSeek)
+- **Native Format** - `.born` format with `nn.Save()` / `nn.Load()`
+- **Checkpoints** - Resume training with optimizer state preservation
+- **SafeTensors** - HuggingFace compatible export
 
 ---
 
@@ -195,7 +170,7 @@ func main() {
 
 **Run it:** `cd examples/mnist && go run .`
 
-### Example: LLM Text Generation (v0.5.0)
+### Example: LLM Text Generation
 
 ```go
 package main
@@ -269,13 +244,13 @@ type Backend interface {
 
 | Backend | Status | Description |
 |---------|--------|-------------|
-| CPU | ✅ **Available** | Pure Go implementation, all operations (v0.1.1) |
-| WebGPU | ✅ **Available** | Zero-CGO GPU via [go-webgpu](https://github.com/go-webgpu/webgpu) (v0.5.3) |
-| Vulkan | 📋 Q3 2025 | Cross-platform GPU compute |
-| CUDA | 📋 Q3 2025 | NVIDIA GPU via zero-CGO |
-| Metal | 📋 Q4 2025 | Apple GPU (macOS/iOS) |
+| CPU | ✅ **Available** | Pure Go implementation, all operations |
+| WebGPU | ✅ **Available** | Zero-CGO GPU via [go-webgpu](https://github.com/go-webgpu/webgpu) |
+| Vulkan | 📋 Planned | Cross-platform GPU compute (Linux focus) |
+| CUDA | 📋 Planned | NVIDIA GPU via zero-CGO |
+| Metal | 📋 Planned | Apple GPU (macOS/iOS) |
 
-**WebGPU Operation Support (v0.5.3) - COMPLETE!** 🎉
+**WebGPU Operation Support** 🎉
 
 | Category | Operations | Backend |
 |----------|------------|---------|
@@ -295,7 +270,7 @@ type Backend interface {
 
 *All operations required for LLM inference (Attention, RoPE, LayerNorm, etc.) are fully supported on GPU.*
 
-**GPU Backend Setup (v0.5.2+):**
+**GPU Backend Setup:**
 
 WebGPU requires the `wgpu_native` library. Download from [wgpu-native releases](https://github.com/gfx-rs/wgpu-native/releases):
 
@@ -383,76 +358,41 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 
 ## Roadmap
 
-### Phase 1: Core (v0.1) - ✅ COMPLETE (Nov 2025)
-- [x] Tensor API with generics
-- [x] CPU backend (pure Go)
-- [x] Autodiff decorator with gradient tape
-- [x] NN modules (Linear, ReLU, Sigmoid, Tanh, Sequential)
-- [x] SGD/Adam optimizers with momentum/bias correction
-- [x] CrossEntropyLoss with numerical stability
-- [x] MNIST classification example
+### ✅ What's Working
 
-**Status**: All 7 core tasks complete. 132 unit tests, 83.8% average coverage, 0 linter issues.
+**Core Framework**
+- Tensor API with generics, autodiff, NN modules (Linear, Conv2D, ReLU, etc.)
+- Optimizers (SGD, Adam), losses (CrossEntropyLoss)
+- MNIST: 97.44% MLP, 98.18% CNN accuracy
 
-### Phase 2: GPU Backends (v0.2-v0.5.3) - ✅ COMPLETE (Dec 2025)
-- [x] WebGPU backend (zero-CGO via go-webgpu)
-- [x] WGSL compute shaders (**35+ operations**)
-- [x] GPU buffer pooling & memory management
-- [x] MNIST GPU inference (10.9x speedup)
-- [x] **v0.5.3**: BatchMatMul, Conv2D, MaxPool2D
-- [x] **v0.5.3**: Comparison ops (Greater, Lower, Equal, etc.)
-- [x] **v0.5.3**: Boolean ops (And, Or, Not)
-- [x] **v0.5.3**: Sum, Argmax, Expand, Cast
+**GPU Acceleration**
+- WebGPU backend with 38+ operations (123x MatMul speedup)
+- Lazy evaluation, command batching (~90s → <5s/step)
+- CNN support (Conv2D, MaxPool2D, BatchMatMul)
 
-**Status**: **COMPLETE WebGPU backend!** 35+ GPU ops, 123x MatMul speedup, all LLM ops supported.
+**LLM & Transformers**
+- Multi-Head Attention, GQA, KV-Cache (3.94x speedup)
+- RoPE, ALiBi, RMSNorm, SwiGLU
+- Tokenizers (TikToken, BPE), text generation with streaming
 
-### Phase 2.5: Transformer Primitives (v0.3) - ✅ COMPLETE (Nov 2025)
-- [x] Math operations (Exp, Sqrt, Rsqrt, Cos, Sin, Log)
-- [x] Reductions (SumDim, MeanDim with keepDim, Sum, Argmax)
-- [x] Tensor manipulation (Cat, Chunk, Unsqueeze, Squeeze, Expand)
-- [x] Indexing (Gather, Where)
-- [x] Modern layers (SiLU, RMSNorm, Embedding, Softmax)
-- [x] Gradient control (NoGrad, Detach)
-- [x] **31 public API operations** (MulScalar, Greater/Gt, Int32, etc.)
+**Model Import & Export**
+- ONNX import (30+ operators)
+- GGUF loading (LLaMA, Mistral, DeepSeek)
+- Native `.born` format, SafeTensors export
 
-**Status**: All 7 tasks complete. 112 new tests, 0 linter issues.
+### 🚀 Upcoming
 
-### Phase 4: Attention Mechanisms (v0.4.0) - December 2025 ✅ COMPLETE
-- [x] Multi-head attention (MHA)
-- [x] Scaled dot-product attention (SDPA)
-- [x] KV-cache for inference (3.94x speedup)
-- [x] Layer normalization (LayerNorm + RMSNorm)
-- [x] Positional encodings (RoPE, ALiBi, Sinusoidal, Learned)
-- [x] Transformer block with FFN
-- [x] BatchMatMul for 3D/4D tensors
+**Inference Optimization** - Flash Attention 2, Speculative Decoding, GGUF import
 
-**Status**: All 8 tasks complete. 80+ new tests, 0 linter issues. **Full Transformer architecture ready!**
+**Quantization** - GPTQ/AWQ (4x smaller), KV Cache compression, Model Zoo
 
-### Phase 5: LLM Support (v0.5.0) - December 2025 ✅ COMPLETE
-- [x] Grouped Query Attention (GQA) - LLaMA 2/3, Mistral style
-- [x] SwiGLU + GLU variants (GeGLU, ReGLU)
-- [x] Model Loader (GGUF format, weight mappers)
-- [x] Tokenizer integration (TikToken, BPE, chat templates)
-- [x] Sampling strategies (Top-K, Top-P, Min-P, temperature, penalties)
-- [x] Inference Pipeline (TextGenerator, streaming, stop sequences)
+**Production Serving** - PagedAttention, Continuous Batching, OpenAI-compatible API
 
-**Status**: All 6 LLM tasks complete. 100+ new tests, 0 linter issues. **Ready for LLM inference!**
+**Scale & Stability** - Multi-GPU, CPU SIMD (AVX2/Neon), Gradient Checkpointing
 
-### Phase 6: ONNX & Lazy GPU (v0.6.0) - ✅ COMPLETE (Dec 2025)
-- [x] ONNX model import (parser, loader, 30+ operators)
-- [x] Lazy GPU evaluation (GPU-resident tensors)
-- [x] Command batching (90s → <5s/step performance)
-- [x] GPU memory management (automatic cleanup)
-- [ ] Linux/macOS WebGPU support (planned)
-- [ ] Model quantization (INT8, FP16) (planned)
+**v1.0 LTS** - API freeze, 3+ years support, production hardening
 
-### Long-Term: v1.0 LTS - 2026
-- [ ] Distributed training
-- [ ] Flash Attention
-- [ ] Model zoo with pre-trained weights
-- [ ] Production optimizations (SIMD, memory pooling)
-
-**Full roadmap**: See [ROADMAP.md](ROADMAP.md)
+**Full roadmap & changelog**: See [ROADMAP.md](ROADMAP.md) and [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
@@ -527,7 +467,7 @@ Born trains    →  Born ready   →  Born serves
 
 *Note: CPU backend uses naive O(n³) MatMul. SIMD optimizations planned for future releases.*
 
-### WebGPU WGSL Shaders (v0.5.3)
+### WebGPU WGSL Shaders
 
 Born includes **30+ optimized WGSL compute shaders**:
 
@@ -637,13 +577,13 @@ See [LICENSE](LICENSE) file for full terms.
 A: Gorgonia is great but uses a different approach. Born focuses on modern Go (generics), pure Go (no CGO), and production-first design inspired by Burn.
 
 **Q: Can I run LLMs with Born?**
-A: Yes! v0.5.0 includes full LLM support - GGUF model loading, tokenizers, sampling strategies, and text generation with streaming. Load LLaMA, Mistral, or DeepSeek models directly.
+A: Yes! Full LLM support included - GGUF model loading, tokenizers, sampling strategies, and text generation with streaming. Load LLaMA, Mistral, or DeepSeek models directly.
 
 **Q: When will it be ready?**
-A: Core features (v0.1-v0.5) are RELEASED! Includes CPU/GPU backends, transformer architecture, and LLM support. ONNX import targeted for v0.6.0 (Q1 2026).
+A: Core features are released! CPU/GPU backends, transformers, LLM support, and ONNX import all work. See [ROADMAP.md](ROADMAP.md) for upcoming features.
 
 **Q: Can I use PyTorch models?**
-A: Yes! Via ONNX import (v0.6.0, Q1 2026). Train in PyTorch, deploy with Born. Currently GGUF models are supported.
+A: Yes! Via ONNX import. Train in PyTorch, export to ONNX, deploy with Born. GGUF models are also supported.
 
 **Q: WebAssembly support?**
 A: Yes! Pure Go compiles to WASM natively. Inference in browsers out of the box.
@@ -652,7 +592,7 @@ A: Yes! Pure Go compiles to WASM natively. Inference in browsers out of the box.
 A: LLaMA 2/3, Mistral, DeepSeek, and compatible architectures. GQA, RoPE, SwiGLU are all supported.
 
 **Q: How do I enable GPU acceleration?**
-A: Install `wgpu_native` library from [wgpu-native releases](https://github.com/gfx-rs/wgpu-native/releases), then use `webgpu.IsAvailable()` to check GPU support. See [Architecture](#backend-abstraction) for setup instructions. v0.5.3 includes **35+ GPU operations** - everything needed for LLM inference!
+A: Install `wgpu_native` library from [wgpu-native releases](https://github.com/gfx-rs/wgpu-native/releases), then use `webgpu.IsAvailable()` to check GPU support. See [Architecture](#backend-abstraction) for setup instructions. **38+ GPU operations** included - everything needed for LLM inference!
 
 **Q: What GPU operations are supported?**
 A: **All operations needed for production ML!** Math (Add, Mul, Exp, etc.), Matrix (MatMul, BatchMatMul, Conv2D), Activations (ReLU, Softmax), Comparisons (Greater, Equal), Boolean (And, Or, Not), Reductions (Sum, Argmax), and more. See the [WebGPU Operation Table](#backend-abstraction).
