@@ -5,6 +5,62 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2025-12-16
+
+### 🔧 Code Quality Refactoring (Issue #14)
+
+Patch release addressing cognitive complexity concerns raised by community contributor [@marcelloh](https://github.com/marcelloh). Applied [Burn framework](https://github.com/tracel-ai/burn) patterns for improved code quality and maintainability.
+
+**Pre-Slice Bounds Elimination** (`internal/backend/cpu/conv2d.go`, `maxpool2d.go`):
+- Extract row slices BEFORE inner loops to eliminate bounds checks
+- Hierarchical pre-slicing for nested loop structures
+- Enables Go compiler to prove safety and optimize vectorization
+
+**Stride Specialization** (`internal/backend/cpu/conv2d.go`):
+- Separate fast paths for `stride=1, padding=0` case (most common)
+- Specialized functions: `conv2dFloat32Stride1NoPad`, `conv2dInputBackwardFloat32Stride1NoPad`
+- Enables compiler auto-vectorization for common case
+
+**Flash Attention CPU Refactor** (`internal/nn/flash_attention.go`):
+- **Complexity reduced: 111 → <30** (removed `//nolint:gocognit` directive)
+- Extracted `FlashDims`, `FlashConfig` structs for configuration
+- Helper functions: `flashAttentionScoreBlock`, `flashAttentionExtractValues`, `flashAttentionProcessQuery`
+- Each helper under 50 AST nodes (Go compiler inlines automatically)
+
+**Autodiff Orchestration** (`internal/autodiff/ops/`):
+- Separated orchestration from computation (Burn pattern)
+- New files: `conv2d_backward.go`, `maxpool2d_backward.go` in CPU backend
+- `autodiff/ops/conv2d.go`: 409 → 67 lines (delegation only)
+- Extended Backend interface with backward operation methods
+
+**Parallel Execution Utilities** (`internal/parallel/`):
+- New package for reusable parallel execution patterns
+- `parallel.Config` - configurable parallelism settings
+- `parallel.For()` - parallel for-loop with automatic sequential fallback
+- `parallel.ForBatch()` - optimized for batch×channels iteration pattern
+- Ready for integration into CPU backend operations
+
+**Backend Interface Extended** (`internal/tensor/backend.go`):
+- `Conv2DInputBackward(input, kernel, grad, stride, padding)` - gradient w.r.t. input
+- `Conv2DKernelBackward(input, kernel, grad, stride, padding)` - gradient w.r.t. kernel
+- `MaxPool2DBackward(input, grad, maxIndices, kernelSize, stride)` - gradient propagation
+- WebGPU backend updated with stub implementations
+
+**Code Quality**:
+- All files properly formatted (`go fmt ./...`)
+- 0 linter issues (golangci-lint)
+- All tests passing
+- No performance regression
+
+**Files Changed**: 13 files, +994/-460 lines
+
+**Links**:
+- Issue: [#14](https://github.com/born-ml/born/issues/14)
+- PR: [#15](https://github.com/born-ml/born/pull/15)
+- Community: Thanks to [@marcelloh](https://github.com/marcelloh) for the detailed analysis!
+
+---
+
 ## [0.7.0] - 2025-12-10
 
 ### ⚡ Flash Attention 2 + Speculative Decoding + GGUF Import

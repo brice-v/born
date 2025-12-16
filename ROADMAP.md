@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2025-12-04 | **Current Version**: v0.6.0 | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.6.0 RELEASED! → v0.7.0 (Jan 2026) → v1.0.0 LTS (After API Freeze)
+**Last Updated**: 2025-12-16 | **Current Version**: v0.7.1 | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.7.1 RELEASED! → v0.8.0 (Feb 2026) → v1.0.0 LTS (After API Freeze)
 
 ---
 
@@ -52,9 +52,11 @@ v0.5.4 (Model Serialization) ✅ RELEASED (2025-12-03)
        ↓ (WebGPU performance)
 v0.5.5 (WebGPU Performance) ✅ RELEASED (2025-12-03)
        ↓ (ONNX import + lazy GPU)
-v0.6.0 (ONNX Import + Lazy GPU Mode) ✅ CURRENT (2025-12-04)
+v0.6.0 (ONNX Import + Lazy GPU Mode) ✅ RELEASED (2025-12-04)
        ↓ (inference optimization)
-v0.7.0 (Flash Attention, Speculative Decoding, GGUF) → Jan 2026
+v0.7.0 (Flash Attention, Speculative Decoding, GGUF) ✅ RELEASED (2025-12-10)
+       ↓ (code quality)
+v0.7.1 (Code Quality - Burn Patterns) ✅ CURRENT (2025-12-16)
        ↓ (quantization & efficiency)
 v0.8.0 (Quantization, Model Zoo, Jupyter) → Feb 2026
        ↓ (production serving)
@@ -124,7 +126,7 @@ v1.0.0 LTS → After API stabilization
 - ~60x speedup for attention operations
 - Eliminated CPU fallback for transformer training
 
-**v0.6.0** = ONNX Import + Lazy GPU Mode ✅ CURRENT
+**v0.6.0** = ONNX Import + Lazy GPU Mode ✅ RELEASED
 - ONNX model import (parser, loader, 30+ operators)
 - Lazy GPU evaluation (GPU-resident tensors)
 - Command batching (~90s → <5s/step for training)
@@ -132,10 +134,20 @@ v1.0.0 LTS → After API stabilization
 - GPU memory management (automatic cleanup)
 - 50+ raw tensor operations
 
-**v0.7.0** = Inference Optimization → January 2026
-- Flash Attention 2 (2x speedup, 128K+ context)
+**v0.7.0** = Inference Optimization ✅ RELEASED
+- Flash Attention 2 (O(N) memory, 2x+ speedup, 128K+ context)
 - Speculative Decoding (2-4x inference speedup)
-- GGUF format import (llama.cpp ecosystem)
+- GGUF Import (llama.cpp ecosystem, K-quant dequantization)
+- WebGPU WGSL Flash Attention shader
+- Online softmax for numerical stability
+
+**v0.7.1** = Code Quality Refactoring ✅ CURRENT
+- Burn framework patterns applied (Issue #14)
+- Flash Attention CPU complexity: 111 → <30
+- Pre-slice bounds elimination
+- Stride specialization for auto-vectorization
+- New `internal/parallel` package
+- Extended Backend interface with backward methods
 
 **v0.8.0** = Quantization & Efficiency → February 2026
 - Post-training quantization (GPTQ/AWQ, 4x smaller)
@@ -167,10 +179,10 @@ v1.0.0 LTS → After API stabilization
 
 ---
 
-## 📊 Current Status (v0.6.0)
+## 📊 Current Status (v0.7.1)
 
-**Phase**: 🚀 ONNX Import + Lazy GPU Mode Release
-**Focus**: Production Performance & Interoperability
+**Phase**: 🚀 Code Quality + Community Contributions
+**Focus**: Maintainability & Developer Experience
 **Quality**: Production-ready
 
 **What Works**:
@@ -201,6 +213,11 @@ v1.0.0 LTS → After API stabilization
 - ✅ **Lazy GPU Mode**: GPU-resident tensors, deferred CPU transfer (v0.6.0)
 - ✅ **Command Batching**: Reduced GPU sync overhead (v0.6.0)
 - ✅ **50+ Raw Ops**: Argmax, TopK, type conversions, broadcasting (v0.6.0)
+- ✅ **Flash Attention 2**: O(N) memory, WebGPU shader, 2x+ speedup (v0.7.0)
+- ✅ **Speculative Decoding**: 2-4x inference speedup (v0.7.0)
+- ✅ **GGUF Import**: llama.cpp models, K-quant dequantization (v0.7.0)
+- ✅ **Burn Patterns**: Pre-slicing, stride specialization (v0.7.1)
+- ✅ **Parallel Utils**: `internal/parallel` package (v0.7.1)
 
 **Performance** (v0.2.0):
 - ✅ **MatMul 1024×1024**: 123x speedup (GPU vs CPU)
@@ -290,38 +307,38 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-### **v0.7.0 - Inference Optimization** (January 2026) [NEXT]
+### **v0.7.0 - Inference Optimization** ✅ RELEASED (2025-12-10)
 
 **Goal**: State-of-the-art inference performance
 
-**Duration**: ~7 weeks
+**Delivered**:
+- ✅ **Flash Attention 2** - O(N) memory, WebGPU WGSL shader, 2x+ speedup on long sequences
+- ✅ **Speculative Decoding** - Draft model + verification, 2-4x inference speedup
+- ✅ **GGUF Import** - llama.cpp format, K-quant dequantization (Q4_K, Q5_K, Q6_K, Q8_0)
+- ✅ **Online Softmax** - Numerical stability for long sequences
+- ✅ **128K+ Context** - Extended context length support
+- ✅ 0 linter issues, all tests passing
 
-**Key Features**:
-1. **Flash Attention 2** (CRITICAL)
-   - Tiled attention algorithm for O(N) memory
-   - 2x speedup over standard attention
-   - 128K+ context length support
-   - WebGPU WGSL implementation
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
-2. **Speculative Decoding** (CRITICAL)
-   - Draft model generates K tokens
-   - Target model verifies in parallel
-   - 2-4x inference speedup
-   - Adaptive speculation length
+---
 
-3. **GGUF Format Import** (CRITICAL)
-   - Direct llama.cpp model loading
-   - K-quant support (Q4_K_M, Q5_K_M, Q6_K)
-   - Metadata parsing and validation
-   - Pre-dequantized inference
+### **v0.7.1 - Code Quality Refactoring** ✅ RELEASED (2025-12-16)
 
-**Success Criteria**:
-- ✅ Flash Attention 2 working on WebGPU
-- ✅ 2x attention speedup demonstrated
-- ✅ Speculative decoding with 2x+ speedup
-- ✅ GGUF models loading and running
+**Goal**: Improved code maintainability via Burn framework patterns
 
-**Target**: January 2026
+**Delivered**:
+- ✅ **Pre-Slice Bounds Elimination** - Conv2D/MaxPool2D optimization
+- ✅ **Stride Specialization** - Fast paths for common stride=1, padding=0 case
+- ✅ **Flash Attention Refactor** - Complexity 111 → <30
+- ✅ **Autodiff Orchestration** - Separated orchestration from computation
+- ✅ **Parallel Utilities** - New `internal/parallel` package
+- ✅ **Extended Backend Interface** - Backward operation methods
+- ✅ 0 linter issues, all tests passing
+
+**Community**: Thanks to [@marcelloh](https://github.com/marcelloh) for Issue #14!
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
@@ -582,5 +599,5 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
-*Version 4.0 (2025-12-04)*
-*Current: v0.6.0 (ONNX Import + Lazy GPU) | Next: v0.7.0 (Inference Optimization, Jan 2026) | Target: v1.0.0 LTS (After API Freeze)*
+*Version 5.0 (2025-12-16)*
+*Current: v0.7.1 (Code Quality) | Next: v0.8.0 (Quantization, Feb 2026) | Target: v1.0.0 LTS (After API Freeze)*

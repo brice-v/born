@@ -18,8 +18,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🚀 **v0.7.0 Released!** (Flash Attention 2 + Speculative Decoding + GGUF!)
-**Latest**: 🔥 Flash Attention 2 (WebGPU), Speculative Decoding (2-4x speedup), GGUF Import (K-quants)
+**Project Status**: 🚀 **v0.7.1 Released!** (Code Quality + Burn Patterns!)
+**Latest**: 🔧 Applied Burn framework patterns, Flash Attention complexity 111→<30, new `internal/parallel` package
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -384,9 +384,7 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 
 ### 🚀 Upcoming
 
-**Inference Optimization** - Flash Attention 2, Speculative Decoding, GGUF import
-
-**Quantization** - GPTQ/AWQ (4x smaller), KV Cache compression, Model Zoo
+**Quantization** (v0.8.0) - GPTQ/AWQ (4x smaller), KV Cache compression, Model Zoo
 
 **Production Serving** - PagedAttention, Continuous Batching, OpenAI-compatible API
 
