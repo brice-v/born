@@ -5,6 +5,37 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2025-12-27
+
+### ✨ New Feature: Linear Layer Without Bias
+
+Add `WithBias` option to `nn.NewLinear` for creating Linear layers without bias term.
+
+**New API**:
+```go
+// With bias (default, backwards compatible)
+layer := nn.NewLinear(784, 128, backend)
+
+// Without bias (for LLaMA-style models, LM head, etc.)
+lmHead := nn.NewLinear(hiddenSize, vocabSize, backend, nn.WithBias(false))
+```
+
+**Changes**:
+- Add `LinearOption` type and `WithBias(bool)` functional option
+- Add `HasBias()` method for introspection
+- Update `SwiGLUFFN` to use public API
+- Export `WithBias` in public `nn` package
+
+**Use Cases**:
+- LM Head in language models (GPT, LLaMA, HRM)
+- Attention projections (some architectures)
+- SwiGLU FFN layers
+
+**Links**:
+- PR: [#22](https://github.com/born-ml/born/pull/22)
+
+---
+
 ## [0.7.3] - 2025-12-27
 
 ### 🔧 Dependencies Update
