@@ -5,6 +5,26 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.5] - 2025-12-29
+
+### 🔧 ARM64 Hotfix
+
+Update GPU backend dependencies with critical ARM64 fixes for Apple Silicon.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.1.2 → **v0.1.3**
+- `go-webgpu/goffi` v0.3.5 → **v0.3.6**
+
+**Fixed Issues**:
+- ARM64 HFA returns (NSRect with 4×float64 now correctly returns all values on Apple Silicon)
+- Large struct returns (structs exceeding 16 bytes now properly use X8 register)
+- macOS ARM64 display (blank window issue where GPU dimensions returned 0×0)
+
+**Links**:
+- Upstream release: [go-webgpu v0.1.3](https://github.com/go-webgpu/webgpu/releases/tag/v0.1.3)
+
+---
+
 ## [0.7.4] - 2025-12-27
 
 ### ✨ New Feature: Linear Layer Without Bias
