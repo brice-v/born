@@ -5,6 +5,32 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.6] - 2026-01-03
+
+### 🔧 ARM64 Darwin Enhancement
+
+Comprehensive ARM64 Darwin support with enhanced struct handling, tested on M3 Pro hardware.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.1.3 → **v0.1.4**
+- `go-webgpu/goffi` v0.3.6 → **v0.3.7**
+
+**Improvements**:
+- Proper layout for nested and complex struct types
+- Automatic struct layout computation for integer/float combinations
+- Enhanced struct return handling (9-16 bytes) utilizing X0 and X1 registers
+
+**Fixed Issues**:
+- Resolved segmentation fault in string output benchmarks on Darwin systems
+
+**Contributors**:
+- @ppoage — ARM64 Darwin implementation, Objective-C test suite, assembly verification
+
+**Links**:
+- Upstream release: [go-webgpu v0.1.4](https://github.com/go-webgpu/webgpu/releases/tag/v0.1.4)
+
+---
+
 ## [0.7.5] - 2025-12-29
 
 ### 🔧 ARM64 Hotfix
