@@ -5,6 +5,27 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.9] - 2026-02-09
+
+### 🔧 Dependencies Update
+
+Update WebGPU backend to v0.3.0 with new capability-querying API and typed errors.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.2.1 → **v0.3.0**
+
+**New Upstream Features Available**:
+- `Surface.GetCapabilities()` — query supported formats, present modes, alpha modes
+- `Device.GetFeatures()` / `Device.HasFeature()` — feature enumeration
+- `Device.GetLimits()` — device limits (experimental)
+- Typed errors with `errors.Is()` / `errors.As()` support (`ErrValidation`, `ErrOutOfMemory`, `ErrInternal`, `ErrDeviceLost`)
+- Resource leak detection via `SetDebugMode(true)` / `ReportLeaks()`
+
+**Links**:
+- Upstream release: [go-webgpu v0.3.0](https://github.com/go-webgpu/webgpu/releases/tag/v0.3.0)
+
+---
+
 ## [0.7.8] - 2026-01-29
 
 ### 🔧 GoGPU Ecosystem Integration (Phase 1)
@@ -1086,6 +1107,13 @@ N/A (initial release)
 
 ---
 
+[0.7.9]: https://github.com/born-ml/born/releases/tag/v0.7.9
+[0.7.8]: https://github.com/born-ml/born/releases/tag/v0.7.8
+[0.7.7]: https://github.com/born-ml/born/releases/tag/v0.7.7
+[0.7.6]: https://github.com/born-ml/born/releases/tag/v0.7.6
+[0.7.5]: https://github.com/born-ml/born/releases/tag/v0.7.5
+[0.7.4]: https://github.com/born-ml/born/releases/tag/v0.7.4
+[0.7.3]: https://github.com/born-ml/born/releases/tag/v0.7.3
 [0.7.2]: https://github.com/born-ml/born/releases/tag/v0.7.2
 [0.7.1]: https://github.com/born-ml/born/releases/tag/v0.7.1
 [0.7.0]: https://github.com/born-ml/born/releases/tag/v0.7.0

@@ -4,8 +4,8 @@ github.com/dlclark/regexp2 v1.11.5 h1:Q/sSnsKerHeCkc/jSTNq1oCm7KiVgUMZRDUoRu0JQZ
 github.com/dlclark/regexp2 v1.11.5/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/go-webgpu/goffi v0.3.8 h1:Kzw7oP1XEjkv+6QvOIWwuNMfW3iOTPq0hQjr14YwVBM=
 github.com/go-webgpu/goffi v0.3.8/go.mod h1:wfoxNsJkU+5RFbV1kNN1kunhc1lFHuJKK3zpgx08/uM=
-github.com/go-webgpu/webgpu v0.2.1 h1:i4kzvI4oq+ETsMRNbdIIz0eakoUes0yCIlUQgusulbI=
-github.com/go-webgpu/webgpu v0.2.1/go.mod h1:2cooaik+rR8u7u8g0WBZvFga+nfhMpddRdTOkq/goA8=
+github.com/go-webgpu/webgpu v0.3.0 h1:cAZb/FoZzflGCxBJV7Ub8GYkVGgJ1ul3IBDqqRb9RQQ=
+github.com/go-webgpu/webgpu v0.3.0/go.mod h1:2cooaik+rR8u7u8g0WBZvFga+nfhMpddRdTOkq/goA8=
 github.com/gogpu/gputypes v0.2.0 h1:Quv3ekiU12zK4ZhBZsSZmalHYc+zj2gr9ZWRyzKgkKk=
 github.com/gogpu/gputypes v0.2.0/go.mod h1:cnXrDMwTpWTvJLW1Vreop3PcT6a2YP/i3s91rPaOavw=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
