@@ -180,7 +180,7 @@ func (e *lazyError) Error() string {
 
 // putUint32LE writes a uint32 to a byte slice in little-endian order.
 func putUint32LE(b []byte, v uint32) {
-	b[0] = byte(v)   //nolint:gosec // G115: intentional uint32-to-byte truncation for LE encoding
+	b[0] = byte(v)       //nolint:gosec // G115: intentional uint32-to-byte truncation for LE encoding
 	b[1] = byte(v >> 8)  //nolint:gosec // G115: intentional uint32-to-byte truncation for LE encoding
 	b[2] = byte(v >> 16) //nolint:gosec // G115: intentional uint32-to-byte truncation for LE encoding
 	b[3] = byte(v >> 24)
@@ -241,7 +241,7 @@ func (b *Backend) runMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTensor, 
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),         //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferOther, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
@@ -444,7 +444,7 @@ func (b *Backend) runBatchMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTen
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),     //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferB, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
@@ -797,7 +797,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 
 	// Calculate result size
 	resultNumElements := newShape.NumElements()
-	elementSize := uint64(input.DType().Size()) //nolint:gosec // G115: integer overflow conversion int -> uint64
+	elementSize := uint64(input.DType().Size())           //nolint:gosec // G115: integer overflow conversion int -> uint64
 	resultSize := uint64(resultNumElements) * elementSize //nolint:gosec // G115: integer overflow conversion int -> uint64
 
 	// Create result buffer - NO defer Release!
@@ -811,7 +811,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	inputStrides := paddedShape.ComputeStrides()
 	outputStrides := newShape.ComputeStrides()
 
-	putUint32LE(params[0:4], uint32(len(newShape))) //nolint:gosec // G115: integer overflow conversion int -> uint32
+	putUint32LE(params[0:4], uint32(len(newShape)))     //nolint:gosec // G115: integer overflow conversion int -> uint32
 	putUint32LE(params[4:8], uint32(resultNumElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
 	// Pack input shape (6 slots) - use paddedShape
@@ -939,7 +939,7 @@ func (b *Backend) runGatherLazy(input *tensor.RawTensor, dim int, indices *tenso
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())),     //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, gatherResultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),

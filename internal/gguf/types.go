@@ -288,7 +288,6 @@ func (f *File) Name() string {
 }
 
 // getIntMetadata retrieves an integer metadata value by key.
-//
 func (f *File) getIntMetadata(key string) int {
 	if v, ok := f.Metadata[key].(uint32); ok {
 		return int(v)

@@ -21,7 +21,7 @@ func mmapFile(f *os.File, size int64) ([]byte, error) {
 		nil,
 		syscall.PAGE_READONLY,
 		uint32(size>>32), //nolint:gosec // G115: integer overflow conversion int64 -> uint32
-		uint32(size), //nolint:gosec // G115: integer overflow conversion int64 -> uint32
+		uint32(size),     //nolint:gosec // G115: integer overflow conversion int64 -> uint32
 		nil,
 	)
 	if err != nil {

@@ -481,7 +481,7 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),         //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferOther, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
@@ -830,7 +830,7 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),     //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferB, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
@@ -943,7 +943,7 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferKernel, 0, uint64(kernel.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 48),
@@ -1388,7 +1388,7 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferWeight, 0, uint64(weight.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(0, bufferWeight, 0, uint64(weight.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
@@ -1681,7 +1681,7 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 
 	bindGroupGather := b.device.CreateBindGroupSimple(bindGroupLayoutGather, []wgpu.BindGroupEntry{
 		wgpu.BufferBindingEntry(0, bufferInputGather, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResultGather, 0, gatherResultSize),
 		wgpu.BufferBindingEntry(3, bufferParamsGather, 0, 16),
 	})
