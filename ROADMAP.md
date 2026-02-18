@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2026-01-29 | **Current Version**: v0.7.8 | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.7.8 RELEASED! → v0.8.0 (Feb 2026) → v1.0.0 LTS (After API Freeze)
+**Last Updated**: 2026-02-18 | **Current Version**: v0.7.10 | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.7.10 RELEASED! → v0.8.0 (Feb 2026) → v1.0.0 LTS (After API Freeze)
 
 ---
 
@@ -60,7 +60,9 @@ v0.7.1 (Code Quality - Burn Patterns) ✅ RELEASED (2025-12-16)
        ↓ (dependency updates)
 v0.7.3 (Dependencies Update) ✅ RELEASED (2025-12-27)
        ↓ (ARM64 enhancements, Linear bias option, API improvements, gogpu integration)
-v0.7.8 (GoGPU Ecosystem Integration Phase 1) ✅ CURRENT (2026-01-29)
+v0.7.8 (GoGPU Ecosystem Integration Phase 1) ✅ RELEASED (2026-01-29)
+       ↓ (dependency updates)
+v0.7.10 (ARM64 Callback Fix) ✅ CURRENT (2026-02-18)
        ↓ (quantization & efficiency)
 v0.8.0 (Quantization, Model Zoo, Jupyter) → Feb 2026
        ↓ (production serving)
