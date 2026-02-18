@@ -29,8 +29,7 @@ func LoadTensorData(file *File, tensorName string) ([]byte, error) {
 	}()
 
 	// Seek to tensor data
-	//nolint:gosec // G115: tensor.Offset from file metadata, won't exceed int64 range.
-	offset := file.TensorDataOffset + int64(tensor.Offset)
+	offset := file.TensorDataOffset + int64(tensor.Offset) //nolint:gosec // G115: integer overflow conversion uint64 -> int64
 	if _, err := f.Seek(offset, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek to tensor data: %w", err)
 	}
@@ -65,8 +64,7 @@ func LoadAllTensors(file *File) (map[string][]byte, error) {
 		tensor := &file.TensorInfo[i]
 
 		// Seek to tensor data
-		//nolint:gosec // G115: tensor.Offset from file metadata, won't exceed int64 range.
-		offset := file.TensorDataOffset + int64(tensor.Offset)
+		offset := file.TensorDataOffset + int64(tensor.Offset) //nolint:gosec // G115: integer overflow conversion uint64 -> int64
 		if _, err := f.Seek(offset, io.SeekStart); err != nil {
 			return nil, fmt.Errorf("seek to tensor %s: %w", tensor.Name, err)
 		}
@@ -117,8 +115,7 @@ func (r *TensorReader) ReadTensor(name string) ([]byte, error) {
 	}
 
 	// Seek to tensor data
-	//nolint:gosec // G115: tensor.Offset from file metadata, won't exceed int64 range.
-	offset := r.file.TensorDataOffset + int64(tensor.Offset)
+	offset := r.file.TensorDataOffset + int64(tensor.Offset) //nolint:gosec // G115: integer overflow conversion uint64 -> int64
 	if _, err := r.reader.Seek(offset, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek to tensor data: %w", err)
 	}
@@ -149,8 +146,7 @@ func (r *TensorReader) ReadTensorInto(name string, dst []byte) error {
 	}
 
 	// Seek to tensor data
-	//nolint:gosec // G115: tensor.Offset from file metadata, won't exceed int64 range.
-	offset := r.file.TensorDataOffset + int64(tensor.Offset)
+	offset := r.file.TensorDataOffset + int64(tensor.Offset) //nolint:gosec // G115: integer overflow conversion uint64 -> int64
 	if _, err := r.reader.Seek(offset, io.SeekStart); err != nil {
 		return fmt.Errorf("seek to tensor data: %w", err)
 	}

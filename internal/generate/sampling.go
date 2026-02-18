@@ -149,7 +149,6 @@ func (s *Sampler) argmax(logits []float32) int32 {
 			maxIdx = i + 1
 		}
 	}
-	//nolint:gosec // G115: Vocab size < 2^31, safe conversion to int32.
 	return int32(maxIdx)
 }
 
@@ -318,14 +317,12 @@ func (s *Sampler) multinomial(probs []float32) int32 {
 	for i, p := range probs {
 		cumSum += p
 		if r < cumSum {
-			//nolint:gosec // G115: Vocab size < 2^31, safe conversion to int32.
 			return int32(i)
 		}
 	}
 
 	// Return last token if rounding errors.
-	//nolint:gosec // G115: Vocab size < 2^31, safe conversion to int32.
-	return int32(len(probs) - 1)
+	return int32(len(probs) - 1) //nolint:gosec // G115: integer overflow conversion int -> int32
 }
 
 // softmax converts logits to probabilities.

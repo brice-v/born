@@ -20,8 +20,8 @@ func mmapFile(f *os.File, size int64) ([]byte, error) {
 		syscall.Handle(f.Fd()),
 		nil,
 		syscall.PAGE_READONLY,
-		uint32(size>>32), //nolint:gosec // G115: Windows API requires uint32 for high DWORD.
-		uint32(size),     //nolint:gosec // G115: Windows API requires uint32 for low DWORD.
+		uint32(size>>32), //nolint:gosec // G115: integer overflow conversion int64 -> uint32
+		uint32(size), //nolint:gosec // G115: integer overflow conversion int64 -> uint32
 		nil,
 	)
 	if err != nil {
@@ -40,7 +40,7 @@ func mmapFile(f *os.File, size int64) ([]byte, error) {
 		syscall.FILE_MAP_READ,
 		0,
 		0,
-		uintptr(size),
+		uintptr(size), //nolint:gosec // G115: int64-to-uintptr needed for syscall
 	)
 	if err != nil {
 		return nil, err
