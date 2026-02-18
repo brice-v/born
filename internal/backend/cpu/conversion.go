@@ -147,7 +147,6 @@ func castFromInt32(result, x *tensor.RawTensor, toDtype tensor.DataType) {
 	case tensor.Uint8:
 		dst := result.AsUint8()
 		for i, v := range src {
-			//nolint:gosec // G115: Cast operation - truncation is expected behavior for type conversion.
 			dst[i] = uint8(v)
 		}
 	case tensor.Bool:
@@ -181,13 +180,11 @@ func castFromInt64(result, x *tensor.RawTensor, toDtype tensor.DataType) {
 	case tensor.Int32:
 		dst := result.AsInt32()
 		for i, v := range src {
-			//nolint:gosec // G115: Cast operation - truncation is expected behavior for type conversion.
 			dst[i] = int32(v)
 		}
 	case tensor.Uint8:
 		dst := result.AsUint8()
 		for i, v := range src {
-			//nolint:gosec // G115: Cast operation - truncation is expected behavior for type conversion.
 			dst[i] = uint8(v)
 		}
 	case tensor.Bool:

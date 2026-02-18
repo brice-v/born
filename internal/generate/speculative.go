@@ -305,7 +305,6 @@ func (sg *SpeculativeGenerator) multinomial(probs []float32) int32 {
 	for i, p := range probs {
 		cumSum += p
 		if r < cumSum {
-			//nolint:gosec // Vocab size < 2^31, safe conversion
 			return int32(i)
 		}
 	}

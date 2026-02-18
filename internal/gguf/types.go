@@ -288,14 +288,12 @@ func (f *File) Name() string {
 }
 
 // getIntMetadata retrieves an integer metadata value by key.
-//
-//nolint:gosec // G115: Metadata values like context_length won't exceed int range.
 func (f *File) getIntMetadata(key string) int {
 	if v, ok := f.Metadata[key].(uint32); ok {
 		return int(v)
 	}
 	if v, ok := f.Metadata[key].(uint64); ok {
-		return int(v)
+		return int(v) //nolint:gosec // G115: integer overflow conversion uint64 -> int
 	}
 	return 0
 }

@@ -85,7 +85,7 @@ func (b *Backend) FlashAttentionGPU(
 	bufferV := b.createBuffer(v.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferV.Release()
 
-	outputSize := uint64(q.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations
+	outputSize := uint64(q.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferOutput := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
 		Size:  outputSize,
@@ -95,13 +95,9 @@ func (b *Backend) FlashAttentionGPU(
 	// Create uniform buffer for params
 	// struct Params { batch, seq_len, kv_len, num_heads, head_dim, block_size, scale (f32), causal }
 	params := make([]byte, 32) // 8 u32 fields = 32 bytes
-	//nolint:gosec // G115: Dimensions validated above - safe conversions from validated int to uint32
 	binary.LittleEndian.PutUint32(params[0:4], uint32(batch))
-	//nolint:gosec // G115: Dimensions validated above
 	binary.LittleEndian.PutUint32(params[4:8], uint32(seqLen))
-	//nolint:gosec // G115: Dimensions validated above
 	binary.LittleEndian.PutUint32(params[8:12], uint32(kvLen))
-	//nolint:gosec // G115: Dimensions validated above
 	binary.LittleEndian.PutUint32(params[12:16], uint32(numHeads))
 	binary.LittleEndian.PutUint32(params[16:20], uint32(headDim))
 	binary.LittleEndian.PutUint32(params[20:24], uint32(blockSize))
@@ -120,8 +116,8 @@ func (b *Backend) FlashAttentionGPU(
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
 		wgpu.BufferBindingEntry(0, bufferQ, 0, outputSize),
-		wgpu.BufferBindingEntry(1, bufferK, 0, uint64(k.ByteSize())), //nolint:gosec // G115: Buffer size fits
-		wgpu.BufferBindingEntry(2, bufferV, 0, uint64(v.ByteSize())), //nolint:gosec // G115: Buffer size fits
+		wgpu.BufferBindingEntry(1, bufferK, 0, uint64(k.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(2, bufferV, 0, uint64(v.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(3, bufferOutput, 0, outputSize),
 		wgpu.BufferBindingEntry(4, bufferParams, 0, 32),
 	})
@@ -136,7 +132,7 @@ func (b *Backend) FlashAttentionGPU(
 
 	// Workgroup dispatch: (num_q_blocks, num_heads, batch)
 	numQBlocks := (seqLen + blockSize - 1) / blockSize
-	computePass.DispatchWorkgroups(uint32(numQBlocks), uint32(numHeads), uint32(batch)) //nolint:gosec // G115: Safe cast
+	computePass.DispatchWorkgroups(uint32(numQBlocks), uint32(numHeads), uint32(batch)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePass.End()
 
 	cmdBuffer := encoder.Finish(nil)

@@ -182,7 +182,7 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 	bufferOther := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferOther.Release()
 
-	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -192,7 +192,7 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 	// Create uniform buffer for params (size: u32)
 	params := make([]byte, 16) // 16-byte aligned
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -215,7 +215,7 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 
 	// Calculate workgroup count: ceil(numElements / workgroupSize)
 
-	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
@@ -296,7 +296,7 @@ func (b *Backend) runComparisonOp(a, other *tensor.RawTensor, shaderName, shader
 	bufferOther := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferOther.Release()
 
-	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -306,7 +306,7 @@ func (b *Backend) runComparisonOp(a, other *tensor.RawTensor, shaderName, shader
 	// Create uniform buffer for params (size: u32)
 	params := make([]byte, 16) // 16-byte aligned
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -329,7 +329,7 @@ func (b *Backend) runComparisonOp(a, other *tensor.RawTensor, shaderName, shader
 
 	// Calculate workgroup count: ceil(numElements / workgroupSize)
 
-	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
@@ -371,7 +371,7 @@ func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode str
 	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
-	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -381,7 +381,7 @@ func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode str
 	// Create uniform buffer for params (size: u32)
 	params := make([]byte, 16) // 16-byte aligned
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -403,7 +403,7 @@ func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode str
 
 	// Calculate workgroup count
 
-	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
@@ -437,11 +437,11 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 		return nil, fmt.Errorf("webgpu: matmul requires 2D tensors, got %v and %v", a.Shape(), other.Shape())
 	}
 
-	M := uint32(a.Shape()[0]) //nolint:gosec // G115: Cast operation - safe conversion.
+	M := uint32(a.Shape()[0])
 
-	K := uint32(a.Shape()[1]) //nolint:gosec // G115: Cast operation - safe conversion.
+	K := uint32(a.Shape()[1])
 
-	N := uint32(other.Shape()[1]) //nolint:gosec // G115: Cast operation - safe conversion.
+	N := uint32(other.Shape()[1])
 
 	if other.Shape()[0] != int(K) {
 		return nil, fmt.Errorf("webgpu: matmul shape mismatch: [%d,%d] @ [%d,%d]", M, K, other.Shape()[0], N)
@@ -462,8 +462,7 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 
 	resultShape := tensor.Shape{int(M), int(N)}
 
-	//nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
-	resultSize := uint64(int(M) * int(N) * 4) // float32 = 4 bytes
+	resultSize := uint64(int(M) * int(N) * 4) //nolint:gosec // float32 = 4 bytes
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -482,8 +481,8 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),         //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
-		wgpu.BufferBindingEntry(1, bufferOther, 0, uint64(other.ByteSize())), //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),         //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(1, bufferOther, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
 	})
@@ -531,9 +530,9 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 		return nil, fmt.Errorf("webgpu: transpose requires 2D tensor, got %v", input.Shape())
 	}
 
-	rows := uint32(input.Shape()[0]) //nolint:gosec // G115: Cast operation - safe conversion.
+	rows := uint32(input.Shape()[0])
 
-	cols := uint32(input.Shape()[1]) //nolint:gosec // G115: Cast operation - safe conversion.
+	cols := uint32(input.Shape()[1])
 
 	// Compile shader
 	shader := b.compileShader("transpose", transposeShader)
@@ -545,7 +544,7 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
-	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -621,7 +620,7 @@ func (b *Backend) runScalarOp(input *tensor.RawTensor, scalar float32, shaderNam
 	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
-	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -631,7 +630,7 @@ func (b *Backend) runScalarOp(input *tensor.RawTensor, scalar float32, shaderNam
 	// Create uniform buffer for params (size: u32, scalar: f32)
 	params := make([]byte, 16) // 16-byte aligned
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	binary.LittleEndian.PutUint32(params[4:8], math.Float32bits(scalar))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -654,7 +653,7 @@ func (b *Backend) runScalarOp(input *tensor.RawTensor, scalar float32, shaderNam
 
 	// Calculate workgroup count
 
-	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
@@ -688,9 +687,9 @@ func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error)
 		return nil, fmt.Errorf("webgpu: softmax requires 2D tensor, got %v", input.Shape())
 	}
 
-	batchSize := uint32(input.Shape()[0]) //nolint:gosec // G115: Cast operation - safe conversion.
+	batchSize := uint32(input.Shape()[0])
 
-	numClasses := uint32(input.Shape()[1]) //nolint:gosec // G115: Cast operation - safe conversion.
+	numClasses := uint32(input.Shape()[1])
 
 	// Compile shader
 	shader := b.compileShader("softmax", softmaxShader)
@@ -702,7 +701,7 @@ func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
-	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -778,25 +777,25 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	if len(shapeA) == 3 {
 		// 3D: [batch, M, K] @ [batch, K, N]
 
-		batch = uint32(shapeA[0]) //nolint:gosec // G115: Cast operation - safe conversion.
+		batch = uint32(shapeA[0])
 
-		M = uint32(shapeA[1]) //nolint:gosec // G115: Cast operation - safe conversion.
+		M = uint32(shapeA[1])
 
-		K = uint32(shapeA[2]) //nolint:gosec // G115: Cast operation - safe conversion.
+		K = uint32(shapeA[2])
 
-		N = uint32(shapeB[2]) //nolint:gosec // G115: Cast operation - safe conversion.
+		N = uint32(shapeB[2])
 		resultShape = tensor.Shape{int(batch), int(M), int(N)}
 	} else {
 		// 4D: [batch, heads, M, K] @ [batch, heads, K, N]
 		// Treat as [batch*heads, M, K] @ [batch*heads, K, N]
 
-		batch = uint32(shapeA[0] * shapeA[1]) //nolint:gosec // G115: Cast operation - safe conversion.
+		batch = uint32(shapeA[0] * shapeA[1]) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-		M = uint32(shapeA[2]) //nolint:gosec // G115: Cast operation - safe conversion.
+		M = uint32(shapeA[2])
 
-		K = uint32(shapeA[3]) //nolint:gosec // G115: Cast operation - safe conversion.
+		K = uint32(shapeA[3])
 
-		N = uint32(shapeB[3]) //nolint:gosec // G115: Cast operation - safe conversion.
+		N = uint32(shapeB[3])
 		resultShape = tensor.Shape{shapeA[0], shapeA[1], int(M), int(N)}
 	}
 
@@ -831,8 +830,8 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),     //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
-		wgpu.BufferBindingEntry(1, bufferB, 0, uint64(other.ByteSize())), //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),     //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(1, bufferB, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
 	})
@@ -884,25 +883,25 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 		return nil, fmt.Errorf("webgpu: Conv2D requires 4D tensors")
 	}
 
-	batchSize := uint32(inShape[0]) //nolint:gosec // G115: Cast operation - safe conversion.
+	batchSize := uint32(inShape[0])
 
-	inChannels := uint32(inShape[1]) //nolint:gosec // G115: Cast operation - safe conversion.
+	inChannels := uint32(inShape[1])
 
-	inHeight := uint32(inShape[2]) //nolint:gosec // G115: Cast operation - safe conversion.
+	inHeight := uint32(inShape[2])
 
-	inWidth := uint32(inShape[3]) //nolint:gosec // G115: Cast operation - safe conversion.
+	inWidth := uint32(inShape[3])
 
-	outChannels := uint32(kShape[0]) //nolint:gosec // G115: Cast operation - safe conversion.
+	outChannels := uint32(kShape[0])
 
-	kernelH := uint32(kShape[2]) //nolint:gosec // G115: Cast operation - safe conversion.
+	kernelH := uint32(kShape[2])
 
-	kernelW := uint32(kShape[3]) //nolint:gosec // G115: Cast operation - safe conversion.
+	kernelW := uint32(kShape[3])
 
 	// Calculate output dimensions
 
-	outHeight := (inHeight+2*uint32(padding)-kernelH)/uint32(stride) + 1 //nolint:gosec // G115: Cast operation - safe conversion.
+	outHeight := (inHeight+2*uint32(padding)-kernelH)/uint32(stride) + 1 //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-	outWidth := (inWidth+2*uint32(padding)-kernelW)/uint32(stride) + 1 //nolint:gosec // G115: Cast operation - safe conversion.
+	outWidth := (inWidth+2*uint32(padding)-kernelW)/uint32(stride) + 1 //nolint:gosec // G115: integer overflow conversion int -> uint32
 
 	resultShape := tensor.Shape{int(batchSize), int(outChannels), int(outHeight), int(outWidth)}
 
@@ -934,9 +933,9 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 	binary.LittleEndian.PutUint32(params[20:24], kernelH)
 	binary.LittleEndian.PutUint32(params[24:28], kernelW)
 
-	binary.LittleEndian.PutUint32(params[28:32], uint32(stride)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[28:32], uint32(stride)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-	binary.LittleEndian.PutUint32(params[32:36], uint32(padding)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[32:36], uint32(padding)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -944,8 +943,8 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())),   //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
-		wgpu.BufferBindingEntry(1, bufferKernel, 0, uint64(kernel.ByteSize())), //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(1, bufferKernel, 0, uint64(kernel.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 48),
 	})
@@ -994,19 +993,19 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 		return nil, fmt.Errorf("webgpu: MaxPool2D requires 4D tensor")
 	}
 
-	batchSize := uint32(inShape[0]) //nolint:gosec // G115: Cast operation - safe conversion.
+	batchSize := uint32(inShape[0])
 
-	channels := uint32(inShape[1]) //nolint:gosec // G115: Cast operation - safe conversion.
+	channels := uint32(inShape[1])
 
-	inHeight := uint32(inShape[2]) //nolint:gosec // G115: Cast operation - safe conversion.
+	inHeight := uint32(inShape[2])
 
-	inWidth := uint32(inShape[3]) //nolint:gosec // G115: Cast operation - safe conversion.
+	inWidth := uint32(inShape[3])
 
-	kSize := uint32(kernelSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	kSize := uint32(kernelSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-	outHeight := (inHeight-kSize)/uint32(stride) + 1 //nolint:gosec // G115: Cast operation - safe conversion.
+	outHeight := (inHeight-kSize)/uint32(stride) + 1 //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-	outWidth := (inWidth-kSize)/uint32(stride) + 1 //nolint:gosec // G115: Cast operation - safe conversion.
+	outWidth := (inWidth-kSize)/uint32(stride) + 1 //nolint:gosec // G115: integer overflow conversion int -> uint32
 
 	resultShape := tensor.Shape{int(batchSize), int(channels), int(outHeight), int(outWidth)}
 
@@ -1034,7 +1033,7 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 	binary.LittleEndian.PutUint32(params[16:20], kSize)
 	binary.LittleEndian.PutUint32(params[20:24], kSize)
 
-	binary.LittleEndian.PutUint32(params[24:28], uint32(stride)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[24:28], uint32(stride)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -1042,7 +1041,7 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(2, bufferParams, 0, 32),
 	})
@@ -1162,7 +1161,7 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 
 	// Calculate number of workgroups needed
 
-	numWorkgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	numWorkgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	partialSumsSize := uint64(numWorkgroups) * 4
 
 	bufferPartialSums := b.device.CreateBuffer(&wgpu.BufferDescriptor{
@@ -1174,7 +1173,7 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -1182,7 +1181,7 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferPartialSums, 0, partialSumsSize),
 		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
 	})
@@ -1223,7 +1222,7 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	case tensor.Int32:
 		var sum int32
 		for i := uint32(0); i < numWorkgroups; i++ {
-			sum += int32(binary.LittleEndian.Uint32(partialData[i*4 : i*4+4])) //nolint:gosec // G115: Cast operation - safe conversion.
+			sum += int32(binary.LittleEndian.Uint32(partialData[i*4 : i*4+4])) //nolint:gosec // G115: integer overflow conversion uint32 -> int32
 		}
 		result, err := tensor.NewRaw(tensor.Shape{}, tensor.Int32, tensor.WebGPU)
 		if err != nil {
@@ -1279,7 +1278,7 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
-	resultSize := uint64(batchSize) * 4 //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(batchSize) * 4
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -1289,9 +1288,9 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	// Create uniform buffer
 	params := make([]byte, 16)
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
 
-	binary.LittleEndian.PutUint32(params[4:8], uint32(dimSize)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[4:8], uint32(dimSize)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -1299,7 +1298,7 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
 	})
@@ -1312,7 +1311,7 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 
-	workgroups := uint32((batchSize + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	workgroups := uint32((batchSize + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
@@ -1367,7 +1366,7 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	bufferIndices := b.createBuffer(indices.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferIndices.Release()
 
-	resultSize := uint64(numIndices) * uint64(embeddingDim) * 4 //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(numIndices) * uint64(embeddingDim) * 4 //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -1377,11 +1376,11 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	// Create params
 	params := make([]byte, 16)
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(numIndices)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[0:4], uint32(numIndices)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-	binary.LittleEndian.PutUint32(params[4:8], uint32(embeddingDim)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[4:8], uint32(embeddingDim))
 
-	binary.LittleEndian.PutUint32(params[8:12], uint32(numEmbeddings)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[8:12], uint32(numEmbeddings))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -1389,8 +1388,8 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferWeight, 0, uint64(weight.ByteSize())),   //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
-		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+		wgpu.BufferBindingEntry(0, bufferWeight, 0, uint64(weight.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
 		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
 	})
@@ -1402,7 +1401,7 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 	totalElements := numIndices * embeddingDim
-	workgroups := uint32((totalElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	workgroups := uint32((totalElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
@@ -1553,7 +1552,7 @@ func (b *Backend) runWhere(condition, x, y *tensor.RawTensor) (*tensor.RawTensor
 	bufferY := b.createBuffer(y.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferY.Release()
 
-	resultSizeWhere := uint64(x.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSizeWhere := uint64(x.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResultWhere := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSizeWhere,
@@ -1563,13 +1562,13 @@ func (b *Backend) runWhere(condition, x, y *tensor.RawTensor) (*tensor.RawTensor
 	// Create uniform buffer
 	paramsWhere := make([]byte, 16)
 
-	binary.LittleEndian.PutUint32(paramsWhere[0:4], uint32(numElements)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(paramsWhere[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParamsWhere := b.createUniformBuffer(paramsWhere)
 	defer bufferParamsWhere.Release()
 
 	// Create bind group
 
-	condSizeWhere := uint64(condFloat32.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	condSizeWhere := uint64(condFloat32.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bindGroupLayoutWhere := pipeline.GetBindGroupLayout(0)
 	bindGroupWhere := b.device.CreateBindGroupSimple(bindGroupLayoutWhere, []wgpu.BindGroupEntry{
 		wgpu.BufferBindingEntry(0, bufferCondition, 0, condSizeWhere),
@@ -1587,7 +1586,7 @@ func (b *Backend) runWhere(condition, x, y *tensor.RawTensor) (*tensor.RawTensor
 	computePassWhere.SetPipeline(pipeline)
 	computePassWhere.SetBindGroup(0, bindGroupWhere, nil)
 
-	workgroupsWhere := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	workgroupsWhere := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePassWhere.DispatchWorkgroups(workgroupsWhere, 1, 1)
 	computePassWhere.End()
 
@@ -1659,7 +1658,7 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	bufferIndices := b.createBuffer(indices.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferIndices.Release()
 
-	gatherResultSize := uint64(gatherBatchSize) * uint64(outputK) * 4 //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	gatherResultSize := uint64(gatherBatchSize) * uint64(outputK) * 4 //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResultGather := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  gatherResultSize,
@@ -1669,11 +1668,11 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	// Create uniform buffer
 	paramsGather := make([]byte, 16)
 
-	binary.LittleEndian.PutUint32(paramsGather[0:4], uint32(gatherBatchSize)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(paramsGather[0:4], uint32(gatherBatchSize))
 
-	binary.LittleEndian.PutUint32(paramsGather[4:8], uint32(inputDim)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(paramsGather[4:8], uint32(inputDim)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-	binary.LittleEndian.PutUint32(paramsGather[8:12], uint32(outputK)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(paramsGather[8:12], uint32(outputK)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParamsGather := b.createUniformBuffer(paramsGather)
 	defer bufferParamsGather.Release()
 
@@ -1681,8 +1680,8 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	bindGroupLayoutGather := pipelineGather.GetBindGroupLayout(0)
 
 	bindGroupGather := b.device.CreateBindGroupSimple(bindGroupLayoutGather, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInputGather, 0, uint64(input.ByteSize())), //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
-		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())),   //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+		wgpu.BufferBindingEntry(0, bufferInputGather, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
 		wgpu.BufferBindingEntry(2, bufferResultGather, 0, gatherResultSize),
 		wgpu.BufferBindingEntry(3, bufferParamsGather, 0, 16),
 	})
@@ -1696,7 +1695,7 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	computePassGather.SetBindGroup(0, bindGroupGather, nil)
 	totalOutputGather := gatherBatchSize * outputK
 
-	workgroupsGather := uint32((totalOutputGather + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: Cast operation - safe conversion.
+	workgroupsGather := uint32((totalOutputGather + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePassGather.DispatchWorkgroups(workgroupsGather, 1, 1)
 	computePassGather.End()
 
@@ -1858,7 +1857,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
-	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
@@ -1873,12 +1872,12 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 
 	binary.LittleEndian.PutUint32(params[0:4], uint32(ndim))
 
-	binary.LittleEndian.PutUint32(params[4:8], uint32(shape.NumElements())) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[4:8], uint32(shape.NumElements())) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
 	// Pack input shape (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(shape) {
-			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(shape[i])) //nolint:gosec // G115: Cast operation - safe conversion.
+			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(shape[i]))
 		} else {
 			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], 1)
 		}
@@ -1887,7 +1886,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// Pack input strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(inputStrides) {
-			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i])) //nolint:gosec // G115: Cast operation - safe conversion.
+			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i]))
 		} else {
 			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], 1)
 		}
@@ -1896,7 +1895,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// Pack output strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(outputStrides) {
-			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i])) //nolint:gosec // G115: Cast operation - safe conversion.
+			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i]))
 		} else {
 			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], 1)
 		}
@@ -1905,7 +1904,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// Pack axes (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(axes) {
-			binary.LittleEndian.PutUint32(params[80+i*4:84+i*4], uint32(axes[i])) //nolint:gosec // G115: Cast operation - safe conversion.
+			binary.LittleEndian.PutUint32(params[80+i*4:84+i*4], uint32(axes[i]))
 		} else {
 			binary.LittleEndian.PutUint32(params[80+i*4:84+i*4], 0)
 		}
@@ -1933,7 +1932,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 
 	// Calculate workgroup count (1D workgroups, 256 threads each)
 
-	numElements := uint32(shape.NumElements()) //nolint:gosec // G115: Cast operation - safe conversion.
+	numElements := uint32(shape.NumElements()) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	workgroups := uint32(math.Ceil(float64(numElements) / 256.0))
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -2014,9 +2013,9 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	// Calculate result size
 	resultNumElements := newShape.NumElements()
 
-	elementSize := uint64(input.DType().Size()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	elementSize := uint64(input.DType().Size()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 
-	resultSize := uint64(resultNumElements) * elementSize //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	resultSize := uint64(resultNumElements) * elementSize //nolint:gosec // G115: integer overflow conversion int -> uint64
 
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
@@ -2030,14 +2029,14 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	inputStrides := paddedShape.ComputeStrides()
 	outputStrides := newShape.ComputeStrides()
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(len(newShape))) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[0:4], uint32(len(newShape))) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-	binary.LittleEndian.PutUint32(params[4:8], uint32(resultNumElements)) //nolint:gosec // G115: Cast operation - safe conversion.
+	binary.LittleEndian.PutUint32(params[4:8], uint32(resultNumElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
 	// Pack input shape (6 slots) - use paddedShape
 	for i := 0; i < 6; i++ {
 		if i < len(paddedShape) {
-			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(paddedShape[i])) //nolint:gosec // G115: Cast operation - safe conversion.
+			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(paddedShape[i]))
 		} else {
 			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], 1)
 		}
@@ -2046,7 +2045,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	// Pack input strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(inputStrides) {
-			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i])) //nolint:gosec // G115: Cast operation - safe conversion.
+			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i]))
 		} else {
 			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], 1)
 		}
@@ -2055,7 +2054,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	// Pack output strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(outputStrides) {
-			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i])) //nolint:gosec // G115: Cast operation - safe conversion.
+			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i]))
 		} else {
 			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], 1)
 		}
@@ -2067,7 +2066,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
-	inputSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
+	inputSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	paramsSize2 := uint64(len(params))
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
 		wgpu.BufferBindingEntry(0, bufferInput, 0, inputSize),

@@ -51,8 +51,7 @@ func (c *TensorConverter) Convert(name string) ([]float32, []int, error) {
 
 	// Dequantize to float32.
 	numElements := tensor.NumElements()
-	//nolint:gosec // G115: NumElements() returns uint64 from file metadata, won't exceed int range for practical tensors.
-	data, err := Dequantize(rawData, tensor.Type, int(numElements))
+	data, err := Dequantize(rawData, tensor.Type, int(numElements)) //nolint:gosec // G115: integer overflow conversion uint64 -> int
 	if err != nil {
 		return nil, nil, fmt.Errorf("dequantize tensor: %w", err)
 	}
@@ -60,7 +59,6 @@ func (c *TensorConverter) Convert(name string) ([]float32, []int, error) {
 	// Convert GGUF dimensions to Born shape (reverse order).
 	shape := make([]int, len(tensor.Dimensions))
 	for i, dim := range tensor.Dimensions {
-		//nolint:gosec // G115: Dimensions from file metadata, won't exceed int range for practical tensors.
 		shape[len(tensor.Dimensions)-1-i] = int(dim)
 	}
 

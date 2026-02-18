@@ -102,14 +102,12 @@ func dequantizeUnquantized(data []byte, dtype GGMLType, numElements int) ([]floa
 
 	case GGMLTypeI16:
 		for i := 0; i < numElements; i++ {
-			//nolint:gosec // G115: Uint16->int16 conversion is safe for signed integer data.
-			result[i] = float32(int16(binary.LittleEndian.Uint16(data[i*2:])))
+			result[i] = float32(int16(binary.LittleEndian.Uint16(data[i*2:]))) //nolint:gosec // G115: integer overflow conversion uint16 -> int16
 		}
 
 	case GGMLTypeI32:
 		for i := 0; i < numElements; i++ {
-			//nolint:gosec // G115: Uint32->int32 conversion is safe for signed integer data.
-			result[i] = float32(int32(binary.LittleEndian.Uint32(data[i*4:])))
+			result[i] = float32(int32(binary.LittleEndian.Uint32(data[i*4:]))) //nolint:gosec // G115: integer overflow conversion uint32 -> int32
 		}
 
 	default:
@@ -226,13 +224,11 @@ func dequantizeBlockQ5_0(data []byte) ([]float32, error) {
 		// Reconstruct 5-bit values.
 		q0Low := qByte & 0x0F
 		q0High := (qh >> i) & 0x1
-		//nolint:gosec // G115: q0High is 1 bit (0 or 1), safe to convert to uint8.
 		q0 := q0Low | (uint8(q0High) << 4)
 		result[i*2] = d * (float32(q0) - 16.0)
 
 		q1Low := qByte >> 4
 		q1High := (qh >> (i + 16)) & 0x1
-		//nolint:gosec // G115: q1High is 1 bit (0 or 1), safe to convert to uint8.
 		q1 := q1Low | (uint8(q1High) << 4)
 		result[i*2+1] = d * (float32(q1) - 16.0)
 	}
@@ -258,13 +254,11 @@ func dequantizeBlockQ5_1(data []byte) ([]float32, error) {
 
 		q0Low := qByte & 0x0F
 		q0High := (qh >> i) & 0x1
-		//nolint:gosec // G115: q0High is 1 bit (0 or 1), safe to convert to uint8.
 		q0 := q0Low | (uint8(q0High) << 4)
 		result[i*2] = d*float32(q0) + m
 
 		q1Low := qByte >> 4
 		q1High := (qh >> (i + 16)) & 0x1
-		//nolint:gosec // G115: q1High is 1 bit (0 or 1), safe to convert to uint8.
 		q1 := q1Low | (uint8(q1High) << 4)
 		result[i*2+1] = d*float32(q1) + m
 	}
@@ -350,7 +344,6 @@ func dequantizeBlockQ4_K(data []byte) ([]float32, error) {
 
 		if byteIdx+1 < 12 {
 			val := (uint16(data[4+byteIdx]) | (uint16(data[4+byteIdx+1]) << 8)) >> bitOffset
-			//nolint:gosec // G115: val is masked to 6 bits (0x3F), safe to convert to uint8.
 			scales[i] = uint8(val & 0x3F)
 		}
 
@@ -360,7 +353,6 @@ func dequantizeBlockQ4_K(data []byte) ([]float32, error) {
 
 		if minByteIdx+1 < 12 {
 			val := (uint16(data[4+minByteIdx]) | (uint16(data[4+minByteIdx+1]) << 8)) >> minBitOffset
-			//nolint:gosec // G115: val is masked to 6 bits (0x3F), safe to convert to uint8.
 			mins[i] = uint8(val & 0x3F)
 		}
 	}
@@ -418,7 +410,6 @@ func dequantizeBlockQ5_K(data []byte) ([]float32, error) {
 
 		if byteIdx+1 < 12 {
 			val := (uint16(data[4+byteIdx]) | (uint16(data[4+byteIdx+1]) << 8)) >> bitOffset
-			//nolint:gosec // G115: val is masked to 6 bits (0x3F), safe to convert to uint8.
 			scales[i] = uint8(val & 0x3F)
 		}
 
@@ -427,7 +418,6 @@ func dequantizeBlockQ5_K(data []byte) ([]float32, error) {
 
 		if minByteIdx+1 < 12 {
 			val := (uint16(data[4+minByteIdx]) | (uint16(data[4+minByteIdx+1]) << 8)) >> minBitOffset
-			//nolint:gosec // G115: val is masked to 6 bits (0x3F), safe to convert to uint8.
 			mins[i] = uint8(val & 0x3F)
 		}
 	}
@@ -484,7 +474,7 @@ func dequantizeBlockQ6_K(data []byte) ([]float32, error) {
 
 	// 16 sub-blocks of 16 elements each.
 	for subBlock := 0; subBlock < 16; subBlock++ {
-		scale := d * float32(int8(data[192+subBlock]))
+		scale := d * float32(int8(data[192+subBlock])) //nolint:gosec // G115: integer overflow conversion byte -> int8
 
 		qlOffset := subBlock * 8
 		qhOffset := 128 + subBlock*4
@@ -500,13 +490,13 @@ func dequantizeBlockQ6_K(data []byte) ([]float32, error) {
 			q0Low := qlByte & 0x0F
 			q0High := (qhByte >> ((i % 2) * 4)) & 0x3
 			q0 := q0Low | (q0High << 4)
-			result[subBlock*16+i*2] = scale * float32(int8(q0)-32)
+			result[subBlock*16+i*2] = scale * float32(int8(q0)-32) //nolint:gosec // G115: integer overflow conversion byte -> int8
 
 			// High element.
 			q1Low := qlByte >> 4
 			q1High := (qhByte >> ((i%2)*4 + 2)) & 0x3
 			q1 := q1Low | (q1High << 4)
-			result[subBlock*16+i*2+1] = scale * float32(int8(q1)-32)
+			result[subBlock*16+i*2+1] = scale * float32(int8(q1)-32) //nolint:gosec // G115: integer overflow conversion byte -> int8
 		}
 	}
 
