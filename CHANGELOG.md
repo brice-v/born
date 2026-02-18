@@ -5,6 +5,27 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.10] - 2026-02-18
+
+### 🔧 Dependencies Update
+
+Update WebGPU backend to v0.3.1 with critical ARM64 callback fix.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.3.0 → **v0.3.1**
+- `go-webgpu/goffi` v0.3.8 → **v0.3.9** (indirect)
+
+**Upstream Fixes**:
+- ARM64 callback trampoline rewrite — fixes LR corruption for callbacks at index > 0
+- Symbol rename to prevent linker collision with purego
+
+**Impact**: Critical fix for macOS Apple Silicon and Linux ARM64 users.
+
+**Links**:
+- Upstream release: [go-webgpu v0.3.1](https://github.com/go-webgpu/webgpu/releases/tag/v0.3.1)
+
+---
+
 ## [0.7.9] - 2026-02-09
 
 ### 🔧 Dependencies Update
@@ -1107,6 +1128,7 @@ N/A (initial release)
 
 ---
 
+[0.7.10]: https://github.com/born-ml/born/releases/tag/v0.7.10
 [0.7.9]: https://github.com/born-ml/born/releases/tag/v0.7.9
 [0.7.8]: https://github.com/born-ml/born/releases/tag/v0.7.8
 [0.7.7]: https://github.com/born-ml/born/releases/tag/v0.7.7
