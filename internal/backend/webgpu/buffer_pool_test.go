@@ -1,12 +1,9 @@
-//go:build windows
-
 package webgpu
 
 import (
 	"testing"
 
-	"github.com/go-webgpu/webgpu/wgpu"
-	"github.com/gogpu/gputypes"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // poolStats is a helper struct for cleaner stats access in tests.
@@ -45,7 +42,7 @@ func TestBufferPoolAcquireRelease(t *testing.T) {
 
 	// Acquire a small buffer
 	size := uint64(1024) // 1KB
-	usage := gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc
+	usage := wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc
 	buffer1 := pool.Acquire(size, usage)
 
 	// Check stats
@@ -121,7 +118,7 @@ func TestBufferPoolSizeCategories(t *testing.T) {
 	}
 
 	// Acquire buffers from different categories
-	usage := gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc
+	usage := wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc
 
 	smallBuf := pool.Acquire(smallSize, usage)
 	mediumBuf := pool.Acquire(mediumSize, usage)
@@ -168,7 +165,7 @@ func TestBufferPoolClear(t *testing.T) {
 	pool := backend.bufferPool
 
 	// Acquire and release several buffers
-	usage := gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc
+	usage := wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc
 	sizes := []uint64{1024, 8192, 2 * 1024 * 1024} // Small, medium, large
 
 	buffers := make([]*wgpu.Buffer, len(sizes))
@@ -211,7 +208,7 @@ func TestBufferPoolMaxSize(t *testing.T) {
 
 	// Try to exceed pool capacity (maxPoolSize = 100)
 	size := uint64(1024)
-	usage := gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc
+	usage := wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc
 
 	buffers := make([]*wgpu.Buffer, 105) // More than maxPoolSize
 
@@ -252,8 +249,8 @@ func TestBufferPoolUsageMismatch(t *testing.T) {
 	pool := backend.bufferPool
 
 	size := uint64(1024)
-	usage1 := gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc
-	usage2 := gputypes.BufferUsageStorage | gputypes.BufferUsageCopyDst
+	usage1 := wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc
+	usage2 := wgpu.BufferUsageStorage | wgpu.BufferUsageCopyDst
 
 	// Acquire and release with usage1
 	buf1 := pool.Acquire(size, usage1)
@@ -339,7 +336,7 @@ func TestBufferPoolIntegration(t *testing.T) {
 	pool := backend.bufferPool
 
 	// Simulate realistic usage pattern
-	usage := gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc
+	usage := wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc
 
 	// Phase 1: Acquire several buffers
 	buffers := make([]*wgpu.Buffer, 10)

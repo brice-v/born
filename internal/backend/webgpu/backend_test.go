@@ -1,5 +1,3 @@
-//go:build windows
-
 package webgpu
 
 import (
@@ -24,14 +22,14 @@ func TestListAdapters(t *testing.T) {
 
 	for i, info := range adapters {
 		t.Logf("Adapter %d:", i)
-		t.Logf("  Vendor: %s", info.Vendor)
-		t.Logf("  Device: %s", info.Device)
-		t.Logf("  Description: %s", info.Description)
+		t.Logf("  Vendor: %s", info.VendorName)
+		t.Logf("  Device: %s", info.Name)
+		t.Logf("  Description: %s", info.DriverDescription)
 		t.Logf("  Architecture: %s", info.Architecture)
 		t.Logf("  Backend: %v", info.BackendType)
 		t.Logf("  Type: %v", info.AdapterType)
-		t.Logf("  VendorID: 0x%04X", info.VendorID)
-		t.Logf("  DeviceID: 0x%04X", info.DeviceID)
+		t.Logf("  VendorID: 0x%04X", info.VendorId)
+		t.Logf("  DeviceID: 0x%04X", info.DeviceId)
 	}
 }
 
@@ -57,7 +55,7 @@ func TestNew(t *testing.T) {
 	if info == nil {
 		t.Log("Note: Adapter info unavailable (GetInfo API issue)")
 	} else {
-		t.Logf("Using GPU: %s (%s)", info.Device, info.Vendor)
+		t.Logf("Using GPU: %s (%s)", info.Name, info.VendorName)
 	}
 }
 

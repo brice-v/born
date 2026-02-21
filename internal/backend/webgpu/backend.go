@@ -1,5 +1,3 @@
-//go:build windows
-
 // Package webgpu implements the WebGPU backend for GPU-accelerated tensor operations.
 // Uses go-webgpu (github.com/go-webgpu/webgpu) for zero-CGO WebGPU bindings.
 package webgpu
@@ -10,9 +8,28 @@ import (
 	"unsafe"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/go-webgpu/webgpu/wgpu"
-	"github.com/gogpu/gputypes"
+	"github.com/cogentcore/webgpu/wgpu"
 )
+
+func check(name string, err error) {
+	if err != nil {
+		panic(name + " error: " + err.Error())
+	}
+}
+
+func CreateBuffer(device *wgpu.Device, bd *wgpu.BufferDescriptor) *wgpu.Buffer {
+	buf, err := device.CreateBuffer(bd)
+	check("CreateBuffer", err)
+	return buf
+}
+
+func CreateBindGroupSimple(device *wgpu.Device, layout *wgpu.BindGroupLayout, entries []wgpu.BindGroupEntry) (*wgpu.BindGroup, error) {
+	return device.CreateBindGroup(&wgpu.BindGroupDescriptor{Label: "", Layout: layout, Entries: entries})
+}
+
+func BindGroupEntry(binding uint32, buffer *wgpu.Buffer, offset uint64, size uint64) wgpu.BindGroupEntry {
+	return wgpu.BindGroupEntry{Binding: binding, Buffer: buffer, Offset: offset, Size: size}
+}
 
 // Backend implements tensor operations on GPU using WebGPU.
 type Backend struct {
@@ -27,7 +44,7 @@ type Backend struct {
 	mu        sync.RWMutex
 
 	// Device info
-	adapterInfo *wgpu.AdapterInfoGo
+	adapterInfo *wgpu.AdapterInfo
 
 	// Buffer pool for memory management
 	bufferPool *BufferPool
@@ -65,14 +82,10 @@ func New() (backend *Backend, err error) {
 	}()
 
 	// Create WebGPU instance
-	instance, createErr := wgpu.CreateInstance(nil)
-	if createErr != nil {
-		return nil, fmt.Errorf("webgpu: failed to create instance: %w", createErr)
-	}
-
+	instance := wgpu.CreateInstance(nil)
 	// Request adapter (GPU)
 	adapter, adapterErr := instance.RequestAdapter(&wgpu.RequestAdapterOptions{
-		PowerPreference: gputypes.PowerPreferenceHighPerformance,
+		PowerPreference: wgpu.PowerPreferenceHighPerformance,
 	})
 	if adapterErr != nil {
 		instance.Release()
@@ -80,7 +93,7 @@ func New() (backend *Backend, err error) {
 	}
 
 	// Get adapter info (optional - don't fail if unavailable)
-	adapterInfo, _ := adapter.GetInfo()
+	adapterInfo := adapter.GetInfo()
 	// Note: adapterInfo may be nil if GetInfo fails, which is OK
 
 	// Request device
@@ -107,7 +120,7 @@ func New() (backend *Backend, err error) {
 		queue:       queue,
 		shaders:     make(map[string]*wgpu.ShaderModule),
 		pipelines:   make(map[string]*wgpu.ComputePipeline),
-		adapterInfo: adapterInfo,
+		adapterInfo: &adapterInfo,
 		bufferPool:  NewBufferPool(device),
 		LazyMode:    true, // Default: lazy mode enabled for optimal performance
 	}
@@ -221,7 +234,7 @@ func (b *Backend) Release() {
 // Name returns the backend name.
 func (b *Backend) Name() string {
 	if b.adapterInfo != nil {
-		return fmt.Sprintf("WebGPU (%s)", b.adapterInfo.Device)
+		return fmt.Sprintf("WebGPU (%s %s)", b.adapterInfo.Name, b.adapterInfo.VendorName)
 	}
 	return "WebGPU"
 }
@@ -232,7 +245,7 @@ func (b *Backend) Device() tensor.Device {
 }
 
 // AdapterInfo returns information about the GPU adapter.
-func (b *Backend) AdapterInfo() *wgpu.AdapterInfoGo {
+func (b *Backend) AdapterInfo() *wgpu.AdapterInfo {
 	return b.adapterInfo
 }
 
@@ -245,10 +258,7 @@ func IsAvailable() (available bool) {
 		}
 	}()
 
-	instance, err := wgpu.CreateInstance(nil)
-	if err != nil {
-		return false
-	}
+	instance := wgpu.CreateInstance(nil)
 	defer instance.Release()
 
 	adapter, err := instance.RequestAdapter(nil)
@@ -261,7 +271,7 @@ func IsAvailable() (available bool) {
 }
 
 // ListAdapters returns information about all available GPU adapters.
-func ListAdapters() (adapters []*wgpu.AdapterInfoGo, err error) {
+func ListAdapters() (adapters []*wgpu.AdapterInfo, err error) {
 	// Recover from panic if wgpu_native library is not found.
 	defer func() {
 		if r := recover(); r != nil {
@@ -270,10 +280,7 @@ func ListAdapters() (adapters []*wgpu.AdapterInfoGo, err error) {
 		}
 	}()
 
-	instance, createErr := wgpu.CreateInstance(nil)
-	if createErr != nil {
-		return nil, fmt.Errorf("webgpu: failed to create instance: %w", createErr)
-	}
+	instance := wgpu.CreateInstance(nil)
 	defer instance.Release()
 
 	// For now, just return the default adapter
@@ -284,12 +291,9 @@ func ListAdapters() (adapters []*wgpu.AdapterInfoGo, err error) {
 	}
 	defer adapter.Release()
 
-	info, infoErr := adapter.GetInfo()
-	if infoErr != nil {
-		return nil, fmt.Errorf("webgpu: failed to get adapter info: %w", infoErr)
-	}
+	info := adapter.GetInfo()
 
-	return []*wgpu.AdapterInfoGo{info}, nil
+	return []*wgpu.AdapterInfo{&info}, nil
 }
 
 // MemoryStats represents GPU memory usage statistics.

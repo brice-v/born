@@ -1,16 +1,12 @@
-//go:build windows
-
 package webgpu
 
 import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"unsafe"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/go-webgpu/webgpu/wgpu"
-	"github.com/gogpu/gputypes"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // compileShader compiles WGSL shader code into a ShaderModule.
@@ -24,7 +20,11 @@ func (b *Backend) compileShader(name, code string) *wgpu.ShaderModule {
 	b.mu.RUnlock()
 
 	// Compile shader
-	shader := b.device.CreateShaderModuleWGSL(code)
+	shader, err := b.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
+		Label:          "",
+		WGSLDescriptor: &wgpu.ShaderModuleWGSLDescriptor{Code: code},
+	})
+	check("CreateShaderModule: %w", err)
 
 	// Cache it
 	b.mu.Lock()
@@ -44,7 +44,15 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule) *w
 	b.mu.RUnlock()
 
 	// Create compute pipeline with auto layout (nil layout)
-	pipeline := b.device.CreateComputePipelineSimple(nil, shader, "main")
+	pipeline, err := b.device.CreateComputePipeline(&wgpu.ComputePipelineDescriptor{
+		Label:  "main",
+		Layout: nil,
+		Compute: wgpu.ProgrammableStageDescriptor{
+			Module:     shader,
+			EntryPoint: "main",
+		},
+	})
+	check("CreateComputePipeline: %w", err)
 
 	// Cache it
 	b.mu.Lock()
@@ -55,20 +63,18 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule) *w
 }
 
 // createBuffer creates a GPU buffer and optionally uploads initial data.
-func (b *Backend) createBuffer(data []byte, usage gputypes.BufferUsage) *wgpu.Buffer {
+func (b *Backend) createBuffer(data []byte, usage wgpu.BufferUsage) *wgpu.Buffer {
 	size := uint64(len(data))
 
 	// Create buffer with MappedAtCreation for initial data upload
-	buffer := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+	buffer := CreateBuffer(b.device, &wgpu.BufferDescriptor{
 		Usage:            usage,
 		Size:             size,
-		MappedAtCreation: wgpu.True,
+		MappedAtCreation: true,
 	})
 
 	// Copy data to mapped buffer
-	mappedPtr := buffer.GetMappedRange(0, size)
-
-	mappedSlice := unsafe.Slice((*byte)(mappedPtr), size) //nolint:gosec // G103: Required for GPU buffer access
+	mappedSlice := buffer.GetMappedRange(0, uint(size))
 	copy(mappedSlice, data)
 	buffer.Unmap()
 
@@ -82,16 +88,15 @@ func (b *Backend) createUniformBuffer(data []byte) *wgpu.Buffer {
 	size := uint64(len(data))
 	alignedSize := (size + 15) &^ 15 // Round up to 16-byte boundary
 
-	buffer := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage:            gputypes.BufferUsageUniform | gputypes.BufferUsageCopyDst,
+	buffer := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage:            wgpu.BufferUsageUniform | wgpu.BufferUsageCopyDst,
 		Size:             alignedSize,
-		MappedAtCreation: wgpu.True,
+		MappedAtCreation: true,
 	})
 
 	// Copy data (padding is handled by aligned size)
-	mappedPtr := buffer.GetMappedRange(0, alignedSize)
+	mappedSlice := buffer.GetMappedRange(0, uint(alignedSize))
 
-	mappedSlice := unsafe.Slice((*byte)(mappedPtr), alignedSize) //nolint:gosec // G103: Required for GPU buffer access
 	copy(mappedSlice, data)
 	buffer.Unmap()
 
@@ -107,35 +112,42 @@ func (b *Backend) readBuffer(srcBuffer *wgpu.Buffer, size uint64) ([]byte, error
 	b.flushCommands()
 
 	// Create staging buffer for reading (MAP_READ | COPY_DST)
-	stagingBuffer := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst,
+	stagingBuffer := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageMapRead | wgpu.BufferUsageCopyDst,
 		Size:  size,
 	})
 	defer stagingBuffer.Release()
 
 	// Copy from GPU buffer to staging buffer
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, fmt.Errorf("CreateCommandEncoder: %w", err)
+	}
 	encoder.CopyBufferToBuffer(srcBuffer, 0, stagingBuffer, 0, size)
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
-	// Map staging buffer for reading
-	err := stagingBuffer.MapAsync(b.device, wgpu.MapModeRead, 0, size)
+	var status wgpu.BufferMapAsyncStatus
+	err = stagingBuffer.MapAsync(wgpu.MapModeRead, 0, size, func(s wgpu.BufferMapAsyncStatus) {
+		status = s
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to map staging buffer: %w", err)
+		return nil, fmt.Errorf("MapAsync: %w", err)
+	}
+	defer stagingBuffer.Unmap()
+
+	b.device.Poll(true, nil)
+
+	if status != wgpu.BufferMapAsyncStatusSuccess {
+		panic(status)
 	}
 
-	// Get mapped range and copy data
-	mappedPtr := stagingBuffer.GetMappedRange(0, size)
-
-	mappedSlice := unsafe.Slice((*byte)(mappedPtr), size) //nolint:gosec // G103: Required for GPU buffer access
-	result := make([]byte, size)
-	copy(result, mappedSlice)
-
-	// Unmap buffer
-	stagingBuffer.Unmap()
-
-	return result, nil
+	buf := make([]byte, size)
+	copy(buf, stagingBuffer.GetMappedRange(0, uint(size)))
+	return buf, nil
 }
 
 // runBinaryOp executes a binary element-wise operation (add, sub, mul, div) on GPU.
@@ -176,15 +188,15 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferA := b.createBuffer(a.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferA := b.createBuffer(a.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferA.Release()
 
-	bufferOther := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferOther := b.createBuffer(other.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferOther.Release()
 
 	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -198,16 +210,22 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, resultSize),
-		wgpu.BufferBindingEntry(1, bufferOther, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferA, 0, resultSize),
+		BindGroupEntry(1, bufferOther, 0, resultSize),
+		BindGroupEntry(2, bufferResult, 0, resultSize),
+		BindGroupEntry(3, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, fmt.Errorf("CreateCommandEncoder: %w", err)
+	}
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -219,7 +237,10 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU
@@ -290,15 +311,15 @@ func (b *Backend) runComparisonOp(a, other *tensor.RawTensor, shaderName, shader
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferA := b.createBuffer(a.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferA := b.createBuffer(a.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferA.Release()
 
-	bufferOther := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferOther := b.createBuffer(other.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferOther.Release()
 
 	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -312,16 +333,20 @@ func (b *Backend) runComparisonOp(a, other *tensor.RawTensor, shaderName, shader
 
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, resultSize),
-		wgpu.BufferBindingEntry(1, bufferOther, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferA, 0, resultSize),
+		BindGroupEntry(1, bufferOther, 0, resultSize),
+		BindGroupEntry(2, bufferResult, 0, resultSize),
+		BindGroupEntry(3, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -333,7 +358,10 @@ func (b *Backend) runComparisonOp(a, other *tensor.RawTensor, shaderName, shader
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU
@@ -368,12 +396,12 @@ func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode str
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -387,15 +415,19 @@ func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode str
 
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, resultSize),
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, resultSize),
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -407,7 +439,10 @@ func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode str
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU
@@ -454,17 +489,17 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 	pipeline := b.getOrCreatePipeline("matmul", shader)
 
 	// Create GPU buffers
-	bufferA := b.createBuffer(a.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferA := b.createBuffer(a.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferA.Release()
 
-	bufferOther := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferOther := b.createBuffer(other.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferOther.Release()
 
 	resultShape := tensor.Shape{int(M), int(N)}
 
 	resultSize := uint64(int(M) * int(N) * 4) //nolint:gosec // float32 = 4 bytes
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -480,16 +515,17 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),         //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferOther, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferA, 0, uint64(a.ByteSize())),         //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(1, bufferOther, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(2, bufferResult, 0, resultSize),
+		BindGroupEntry(3, bufferParams, 0, 16),
 	})
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -501,7 +537,10 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU
@@ -541,12 +580,12 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 	pipeline := b.getOrCreatePipeline("transpose", shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -560,15 +599,19 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, resultSize),
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, resultSize),
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -580,7 +623,10 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU
@@ -617,12 +663,12 @@ func (b *Backend) runScalarOp(input *tensor.RawTensor, scalar float32, shaderNam
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -637,15 +683,19 @@ func (b *Backend) runScalarOp(input *tensor.RawTensor, scalar float32, shaderNam
 
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, resultSize),
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, resultSize),
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -657,7 +707,10 @@ func (b *Backend) runScalarOp(input *tensor.RawTensor, scalar float32, shaderNam
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU
@@ -698,12 +751,12 @@ func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	pipeline := b.getOrCreatePipeline("softmax", shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -717,15 +770,19 @@ func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error)
 
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, resultSize),
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, resultSize),
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -736,7 +793,10 @@ func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU
@@ -804,15 +864,15 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	pipeline := b.getOrCreatePipeline("batchMatMul", shader)
 
 	// Create GPU buffers
-	bufferA := b.createBuffer(a.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferA := b.createBuffer(a.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferA.Release()
 
-	bufferB := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferB := b.createBuffer(other.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferB.Release()
 
 	resultSize := uint64(batch) * uint64(M) * uint64(N) * 4 // float32 = 4 bytes
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -829,16 +889,20 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),     //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferB, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferA, 0, uint64(a.ByteSize())),     //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(1, bufferB, 0, uint64(other.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(2, bufferResult, 0, resultSize),
+		BindGroupEntry(3, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -850,7 +914,10 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, batch)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result
@@ -910,15 +977,15 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 	pipeline := b.getOrCreatePipeline("conv2d", shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
-	bufferKernel := b.createBuffer(kernel.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferKernel := b.createBuffer(kernel.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferKernel.Release()
 
 	resultSize := uint64(batchSize) * uint64(outChannels) * uint64(outHeight) * uint64(outWidth) * 4
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -942,16 +1009,20 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferKernel, 0, uint64(kernel.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(3, bufferParams, 0, 48),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, uint64(input.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(1, bufferKernel, 0, uint64(kernel.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(2, bufferResult, 0, resultSize),
+		BindGroupEntry(3, bufferParams, 0, 48),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -963,7 +1034,10 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, workgroupsZ)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result
@@ -1014,12 +1088,12 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 	pipeline := b.getOrCreatePipeline("maxPool2d", shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(batchSize) * uint64(channels) * uint64(outHeight) * uint64(outWidth) * 4
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -1040,15 +1114,19 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, 32),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, 32),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -1060,7 +1138,10 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, workgroupsZ)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result
@@ -1156,7 +1237,7 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create input buffer
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	// Calculate number of workgroups needed
@@ -1164,8 +1245,8 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	numWorkgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	partialSumsSize := uint64(numWorkgroups) * 4
 
-	bufferPartialSums := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferPartialSums := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  partialSumsSize,
 	})
 	defer bufferPartialSums.Release()
@@ -1180,15 +1261,19 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferPartialSums, 0, partialSumsSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(1, bufferPartialSums, 0, partialSumsSize),
+		BindGroupEntry(2, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -1196,7 +1281,10 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	computePass.DispatchWorkgroups(numWorkgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read partial sums and sum on CPU
@@ -1275,12 +1363,12 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	pipeline := b.getOrCreatePipeline("argmax", shader)
 
 	// Create buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(batchSize) * 4
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -1297,15 +1385,19 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -1315,7 +1407,10 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result
@@ -1360,15 +1455,15 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	pipeline := b.getOrCreatePipeline("embedding", shader)
 
 	// Create buffers
-	bufferWeight := b.createBuffer(weight.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferWeight := b.createBuffer(weight.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferWeight.Release()
 
-	bufferIndices := b.createBuffer(indices.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferIndices := b.createBuffer(indices.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferIndices.Release()
 
 	resultSize := uint64(numIndices) * uint64(embeddingDim) * 4 //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -1387,16 +1482,20 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferWeight, 0, uint64(weight.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferWeight, 0, uint64(weight.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(2, bufferResult, 0, resultSize),
+		BindGroupEntry(3, bufferParams, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
@@ -1405,7 +1504,10 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result
@@ -1543,18 +1645,18 @@ func (b *Backend) runWhere(condition, x, y *tensor.RawTensor) (*tensor.RawTensor
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create buffers
-	bufferCondition := b.createBuffer(condFloat32.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferCondition := b.createBuffer(condFloat32.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferCondition.Release()
 
-	bufferX := b.createBuffer(x.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferX := b.createBuffer(x.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferX.Release()
 
-	bufferY := b.createBuffer(y.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferY := b.createBuffer(y.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferY.Release()
 
 	resultSizeWhere := uint64(x.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResultWhere := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResultWhere := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSizeWhere,
 	})
 	defer bufferResultWhere.Release()
@@ -1570,17 +1672,23 @@ func (b *Backend) runWhere(condition, x, y *tensor.RawTensor) (*tensor.RawTensor
 
 	condSizeWhere := uint64(condFloat32.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bindGroupLayoutWhere := pipeline.GetBindGroupLayout(0)
-	bindGroupWhere := b.device.CreateBindGroupSimple(bindGroupLayoutWhere, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferCondition, 0, condSizeWhere),
-		wgpu.BufferBindingEntry(1, bufferX, 0, resultSizeWhere),
-		wgpu.BufferBindingEntry(2, bufferY, 0, resultSizeWhere),
-		wgpu.BufferBindingEntry(3, bufferResultWhere, 0, resultSizeWhere),
-		wgpu.BufferBindingEntry(4, bufferParamsWhere, 0, 16),
+	bindGroupWhere, err := CreateBindGroupSimple(b.device, bindGroupLayoutWhere, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferCondition, 0, condSizeWhere),
+		BindGroupEntry(1, bufferX, 0, resultSizeWhere),
+		BindGroupEntry(2, bufferY, 0, resultSizeWhere),
+		BindGroupEntry(3, bufferResultWhere, 0, resultSizeWhere),
+		BindGroupEntry(4, bufferParamsWhere, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroupWhere.Release()
 
 	// Execute
-	encoderWhere := b.device.CreateCommandEncoder(nil)
+	encoderWhere, err := b.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, fmt.Errorf("CreateCommandEncoder: %w", err)
+	}
 	computePassWhere := encoderWhere.BeginComputePass(nil)
 
 	computePassWhere.SetPipeline(pipeline)
@@ -1590,7 +1698,10 @@ func (b *Backend) runWhere(condition, x, y *tensor.RawTensor) (*tensor.RawTensor
 	computePassWhere.DispatchWorkgroups(workgroupsWhere, 1, 1)
 	computePassWhere.End()
 
-	cmdBufferWhere := encoderWhere.Finish(nil)
+	cmdBufferWhere, err := encoderWhere.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoderWhere.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBufferWhere)
 
 	// Read result
@@ -1652,15 +1763,15 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	pipelineGather := b.getOrCreatePipeline("gather", shaderGather)
 
 	// Create buffers
-	bufferInputGather := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInputGather := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInputGather.Release()
 
-	bufferIndices := b.createBuffer(indices.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferIndices := b.createBuffer(indices.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferIndices.Release()
 
 	gatherResultSize := uint64(gatherBatchSize) * uint64(outputK) * 4 //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResultGather := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResultGather := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  gatherResultSize,
 	})
 	defer bufferResultGather.Release()
@@ -1679,16 +1790,22 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	// Create bind group
 	bindGroupLayoutGather := pipelineGather.GetBindGroupLayout(0)
 
-	bindGroupGather := b.device.CreateBindGroupSimple(bindGroupLayoutGather, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInputGather, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(2, bufferResultGather, 0, gatherResultSize),
-		wgpu.BufferBindingEntry(3, bufferParamsGather, 0, 16),
+	bindGroupGather, err := CreateBindGroupSimple(b.device, bindGroupLayoutGather, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInputGather, 0, uint64(input.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(1, bufferIndices, 0, uint64(indices.ByteSize())),   //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(2, bufferResultGather, 0, gatherResultSize),
+		BindGroupEntry(3, bufferParamsGather, 0, 16),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroupGather.Release()
 
 	// Execute
-	encoderGather := b.device.CreateCommandEncoder(nil)
+	encoderGather, err := b.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, fmt.Errorf("CreateCommandEncoder: %w", err)
+	}
 	computePassGather := encoderGather.BeginComputePass(nil)
 
 	computePassGather.SetPipeline(pipelineGather)
@@ -1699,7 +1816,10 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	computePassGather.DispatchWorkgroups(workgroupsGather, 1, 1)
 	computePassGather.End()
 
-	cmdBufferGather := encoderGather.Finish(nil)
+	cmdBufferGather, err := encoderGather.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoderGather.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBufferGather)
 
 	// Read result
@@ -1854,12 +1974,12 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -1916,15 +2036,19 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// Get bind group layout and create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 	paramsSize := uint64(len(params))
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, resultSize),
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, paramsSize),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, resultSize),
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, paramsSize),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -1937,7 +2061,10 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU
@@ -2007,7 +2134,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	// Calculate result size
@@ -2017,8 +2144,8 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 
 	resultSize := uint64(resultNumElements) * elementSize //nolint:gosec // G115: integer overflow conversion int -> uint64
 
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -2068,15 +2195,16 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 
 	inputSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	paramsSize2 := uint64(len(params))
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferInput, 0, inputSize),
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, paramsSize2),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, inputSize),
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, paramsSize2),
 	})
 	defer bindGroup.Release()
 
 	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	computePass := encoder.BeginComputePass(nil)
 
 	computePass.SetPipeline(pipeline)
@@ -2087,7 +2215,10 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result back from GPU

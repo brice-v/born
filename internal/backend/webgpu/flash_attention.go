@@ -1,5 +1,3 @@
-//go:build windows
-
 package webgpu
 
 import (
@@ -8,8 +6,7 @@ import (
 	"math"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/go-webgpu/webgpu/wgpu"
-	"github.com/gogpu/gputypes"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // FlashAttentionGPU executes Flash Attention 2 on GPU using WebGPU.
@@ -76,18 +73,18 @@ func (b *Backend) FlashAttentionGPU(
 	pipeline := b.getOrCreatePipeline("flash_attention", shader)
 
 	// Create GPU buffers
-	bufferQ := b.createBuffer(q.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferQ := b.createBuffer(q.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferQ.Release()
 
-	bufferK := b.createBuffer(k.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferK := b.createBuffer(k.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferK.Release()
 
-	bufferV := b.createBuffer(v.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferV := b.createBuffer(v.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferV.Release()
 
 	outputSize := uint64(q.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferOutput := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+	bufferOutput := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  outputSize,
 	})
 	defer bufferOutput.Release()
@@ -114,17 +111,18 @@ func (b *Backend) FlashAttentionGPU(
 
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, bufferQ, 0, outputSize),
-		wgpu.BufferBindingEntry(1, bufferK, 0, uint64(k.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(2, bufferV, 0, uint64(v.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
-		wgpu.BufferBindingEntry(3, bufferOutput, 0, outputSize),
-		wgpu.BufferBindingEntry(4, bufferParams, 0, 32),
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferQ, 0, outputSize),
+		BindGroupEntry(1, bufferK, 0, uint64(k.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(2, bufferV, 0, uint64(v.ByteSize())), //nolint:gosec // G115: integer overflow conversion int -> uint64
+		BindGroupEntry(3, bufferOutput, 0, outputSize),
+		BindGroupEntry(4, bufferParams, 0, 32),
 	})
 	defer bindGroup.Release()
 
 	// Dispatch compute shader
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 
 	computePass := encoder.BeginComputePass(nil)
 	computePass.SetPipeline(pipeline)
@@ -135,7 +133,10 @@ func (b *Backend) FlashAttentionGPU(
 	computePass.DispatchWorkgroups(uint32(numQBlocks), uint32(numHeads), uint32(batch)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	computePass.End()
 
-	cmdBuffer := encoder.Finish(nil)
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
 	b.queue.Submit(cmdBuffer)
 
 	// Read result

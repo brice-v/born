@@ -1,9 +1,7 @@
-//go:build windows
-
 package webgpu
 
 import (
-	"github.com/go-webgpu/webgpu/wgpu"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // CommandBatch accumulates GPU operations for single submission.
@@ -25,7 +23,8 @@ type pendingOp struct {
 // NewBatch creates a new command batch for accumulating operations.
 // The batch will use a single CommandEncoder for all operations.
 func (b *Backend) NewBatch() *CommandBatch {
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
 	return &CommandBatch{
 		backend: b,
 		encoder: encoder,
@@ -65,7 +64,8 @@ func (batch *CommandBatch) Submit() {
 	}
 
 	// Finish command encoder and submit all commands at once
-	cmdBuffer := batch.encoder.Finish(nil)
+	cmdBuffer, err := batch.encoder.Finish(nil)
+	check("batch.encoder.Finish", err)
 	batch.backend.queue.Submit(cmdBuffer)
 
 	// Mark all outputs as computed
