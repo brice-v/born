@@ -118,6 +118,7 @@ func (b *Backend) FlashAttentionGPU(
 		BindGroupEntry(3, bufferOutput, 0, outputSize),
 		BindGroupEntry(4, bufferParams, 0, 32),
 	})
+	check("CreateBindGroupSimple", err)
 	defer bindGroup.Release()
 
 	// Dispatch compute shader
