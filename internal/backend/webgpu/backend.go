@@ -1,21 +1,15 @@
-//go:build windows
-
 // Package webgpu implements the WebGPU backend for GPU-accelerated tensor operations.
-// Uses gogpu/wgpu (github.com/gogpu/wgpu) for pure Go, zero-CGO WebGPU bindings.
+// Uses gogpu/wgpu (github.com/cogentcore/webgpu) for pure Go, zero-CGO WebGPU bindings.
 package webgpu
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/gogpu/gputypes"
-	wgpu "github.com/gogpu/wgpu"
-	_ "github.com/gogpu/wgpu/hal/allbackends"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // pipelineEntry caches a compute pipeline together with its layouts.
@@ -46,9 +40,9 @@ type pendingSubmission struct {
 // overhead and reduces driver synchronization points.
 type encoderBatch struct {
 	encoder    *wgpu.CommandEncoder
-	copies     []bufferCopyEntry    // CopyBufferToBuffer entries added before Finish
-	resultBufs []*wgpu.Buffer       // released after Submit
-	bindGroups []*wgpu.BindGroup    // released after Submit
+	copies     []bufferCopyEntry // CopyBufferToBuffer entries added before Finish
+	resultBufs []*wgpu.Buffer    // released after Submit
+	bindGroups []*wgpu.BindGroup // released after Submit
 	count      int
 }
 
@@ -134,16 +128,11 @@ type Backend struct {
 func New() (*Backend, error) {
 	// Create WebGPU instance. Vulkan is the primary compute backend —
 	// stable across all platforms and GPU vendors.
-	instance, err := wgpu.CreateInstance(&wgpu.InstanceDescriptor{
-		Backends: wgpu.BackendsVulkan,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
-	}
+	instance := wgpu.CreateInstance(nil)
 
 	// Request adapter (GPU).
 	adapter, err := instance.RequestAdapter(&wgpu.RequestAdapterOptions{
-		PowerPreference: gputypes.PowerPreferenceHighPerformance,
+		PowerPreference: wgpu.PowerPreferenceHighPerformance,
 	})
 	if err != nil {
 		instance.Release()
@@ -151,7 +140,7 @@ func New() (*Backend, error) {
 	}
 
 	// Get adapter info. In gogpu/wgpu, Info() returns AdapterInfo by value.
-	info := adapter.Info()
+	info := adapter.GetInfo()
 
 	// Request device.
 	device, err := adapter.RequestDevice(nil)
@@ -162,7 +151,7 @@ func New() (*Backend, error) {
 	}
 
 	// Get default queue. In gogpu/wgpu the queue is accessed via device.Queue().
-	queue := device.Queue()
+	queue := device.GetQueue()
 	if queue == nil {
 		device.Release()
 		adapter.Release()
@@ -223,9 +212,7 @@ func (b *Backend) flushCommands() {
 		cmdBufs[i] = p.cmdBuffer
 	}
 
-	if _, err := b.queue.Submit(cmdBufs...); err != nil {
-		panic("webgpu: flushCommands: submit failed: " + err.Error())
-	}
+	b.queue.Submit(cmdBufs...)
 
 	// Release intermediate resources now that Submit has registered them
 	// with the GPU's destroy queue (lastSubmissionIndex updated). wgpu defers
@@ -253,7 +240,7 @@ func (b *Backend) Release() {
 	// Without this, rapid create/destroy cycles (e.g. test suites) can
 	// overwhelm the driver on iGPUs with shared memory.
 	if b.device != nil {
-		b.device.Poll(wgpu.PollWait)
+		b.device.Poll(true, nil)
 	}
 
 	// Release cached input buffers before device teardown.
@@ -346,7 +333,9 @@ func IsAvailable() (available bool) {
 	// Software renderers pass adapter/device creation but fail here.
 	shader, err := backend.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
 		Label: "availability-check",
-		WGSL:  "@compute @workgroup_size(1) fn main() {}",
+		WGSLDescriptor: &wgpu.ShaderModuleWGSLDescriptor{
+			Code: "@compute @workgroup_size(1) fn main() {}",
+		},
 	})
 	if err != nil {
 		return false
@@ -368,7 +357,10 @@ func IsAvailable() (available bool) {
 	defer pl.Release()
 
 	pipeline, err := backend.device.CreateComputePipeline(&wgpu.ComputePipelineDescriptor{
-		Label: "availability-check", Layout: pl, Module: shader, EntryPoint: "main",
+		Label: "availability-check", Layout: pl, Compute: wgpu.ProgrammableStageDescriptor{
+			Module:     shader,
+			EntryPoint: "main",
+		},
 	})
 	if err != nil {
 		return false
@@ -380,10 +372,7 @@ func IsAvailable() (available bool) {
 
 // ListAdapters returns information about all available GPU adapters.
 func ListAdapters() ([]*wgpu.AdapterInfo, error) {
-	instance, err := wgpu.CreateInstance(nil)
-	if err != nil {
-		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
-	}
+	instance := wgpu.CreateInstance(nil)
 	defer instance.Release()
 
 	// WebGPU spec doesn't expose adapter enumeration; return the default adapter.
@@ -394,7 +383,7 @@ func ListAdapters() ([]*wgpu.AdapterInfo, error) {
 	defer adapter.Release()
 
 	// In gogpu/wgpu, Info() returns AdapterInfo by value (no error).
-	info := adapter.Info()
+	info := adapter.GetInfo()
 	return []*wgpu.AdapterInfo{&info}, nil
 }
 
@@ -527,42 +516,18 @@ func (b *Backend) ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, 
 	if debugReadGPU {
 		fmt.Fprintf(os.Stderr, "[ReadGPUBuffer] Poll(PollWait) start, size=%d\n", size)
 	}
-	b.device.Poll(wgpu.PollWait)
+	b.device.Poll(true, nil)
 	if debugReadGPU {
 		fmt.Fprintln(os.Stderr, "[ReadGPUBuffer] Poll(PollWait) done")
 	}
 
 	buffer := (*wgpu.Buffer)(bufferPtr)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if debugReadGPU {
-		fmt.Fprintln(os.Stderr, "[ReadGPUBuffer] Map start")
-	}
-	if err := buffer.Map(ctx, wgpu.MapModeRead, 0, size); err != nil {
-		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: map failed (size=%d): %w", size, err)
-	}
-	if debugReadGPU {
-		fmt.Fprintln(os.Stderr, "[ReadGPUBuffer] Map done")
-	}
-	defer func() { _ = buffer.Unmap() }()
-
-	mappedRange, err := buffer.MappedRange(0, size)
+	data, err := MapAndGetBuffer(buffer, size)
 	if err != nil {
-		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: mapped range (size=%d): %w", size, err)
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: %w", err)
 	}
-	defer mappedRange.Release()
-
-	data := mappedRange.Bytes()
-	if data == nil {
-		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: Bytes() nil (buffer released?)")
-	}
-	if uint64(len(data)) < size {
-		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: got %d bytes, need %d", len(data), size)
-	}
-	result := make([]byte, size)
-	copy(result, data)
-	return result, nil
+	return data, nil
 }
 
 // debugReadGPU enables stderr logging for ReadGPUBuffer calls.

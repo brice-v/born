@@ -1,10 +1,9 @@
-//go:build windows
-
 package webgpu
 
 import (
-	"github.com/born-ml/born/internal/tensor"
 	"testing"
+
+	"github.com/born-ml/born/internal/tensor"
 )
 
 func TestAddNonLazy(t *testing.T) {

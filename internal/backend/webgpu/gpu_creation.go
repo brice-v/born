@@ -1,5 +1,3 @@
-//go:build windows
-
 package webgpu
 
 import (
@@ -9,7 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/gogpu/gputypes"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // FromRawTensor uploads a CPU tensor to GPU memory.
@@ -35,7 +33,7 @@ func (b *Backend) FromRawTensor(t *tensor.RawTensor) *GPUTensor {
 	// Create GPU buffer with aligned data
 	buffer := b.createBuffer(
 		alignedData,
-		gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc|gputypes.BufferUsageCopyDst,
+		wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc|wgpu.BufferUsageCopyDst,
 	)
 
 	// Track buffer allocation
@@ -75,7 +73,7 @@ func (b *Backend) ZerosGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor
 	// Create GPU buffer
 	buffer := b.createBuffer(
 		data,
-		gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc|gputypes.BufferUsageCopyDst,
+		wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc|wgpu.BufferUsageCopyDst,
 	)
 
 	// Track buffer allocation
@@ -139,7 +137,7 @@ func (b *Backend) OnesGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor 
 	// Create GPU buffer
 	buffer := b.createBuffer(
 		data,
-		gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc|gputypes.BufferUsageCopyDst,
+		wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc|wgpu.BufferUsageCopyDst,
 	)
 
 	// Track buffer allocation
@@ -207,7 +205,7 @@ func (b *Backend) RandGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor 
 	// Create GPU buffer
 	buffer := b.createBuffer(
 		data,
-		gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc|gputypes.BufferUsageCopyDst,
+		wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc|wgpu.BufferUsageCopyDst,
 	)
 
 	// Track buffer allocation

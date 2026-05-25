@@ -1,5 +1,3 @@
-//go:build windows
-
 // Package webgpu implements the WebGPU backend for GPU-accelerated tensor operations.
 package webgpu
 
@@ -11,8 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/gogpu/gputypes"
-	wgpu "github.com/gogpu/wgpu"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // createLazyResult creates a lazy RawTensor backed by a GPU staging buffer.
@@ -88,7 +85,7 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 	// Intermediate result buffer: written by the compute shader, source for the copy.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release here.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -100,7 +97,7 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 	// lazy ops (getOrCreateInputBuffer → copyGPUBuffer).
 	// Ownership transfers to the lazy tensor — NO defer Release.
 	stagingBuf, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageMapRead | wgpu.BufferUsageCopyDst | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -132,7 +129,7 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 // (or transferring ownership to a lazy tensor via createLazyResult).
 func (b *Backend) createStagingBuffer(size uint64) (*wgpu.Buffer, error) {
 	buf, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageMapRead | wgpu.BufferUsageCopyDst | wgpu.BufferUsageCopySrc,
 		Size:  size,
 	})
 	if err != nil {
@@ -168,10 +165,10 @@ func (b *Backend) copyGPUBuffer(srcBuffer *wgpu.Buffer, size uint64) *wgpu.Buffe
 	// flushCommands calls finishActiveBatchLocked internally, so the active
 	// encoder (if any) is also finished before we issue the copy submit.
 	b.flushCommands()
-	b.device.Poll(wgpu.PollWait)
+	b.device.Poll(true, nil)
 
 	dstBuffer, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  size,
 	})
 	if err != nil {
@@ -183,13 +180,11 @@ func (b *Backend) copyGPUBuffer(srcBuffer *wgpu.Buffer, size uint64) *wgpu.Buffe
 		panic(fmt.Sprintf("webgpu: copyGPUBuffer: failed to create encoder: %v", encErr))
 	}
 	encoder.CopyBufferToBuffer(srcBuffer, 0, dstBuffer, 0, size)
-	cmdBuffer, finErr := encoder.Finish()
+	cmdBuffer, finErr := encoder.Finish(nil)
 	if finErr != nil {
 		panic(fmt.Sprintf("webgpu: copyGPUBuffer: failed to finish encoder: %v", finErr))
 	}
-	if _, err := b.queue.Submit(cmdBuffer); err != nil {
-		panic(fmt.Sprintf("webgpu: copyGPUBuffer: submit failed: %v", err))
-	}
+	b.queue.Submit(cmdBuffer)
 
 	return dstBuffer
 }
@@ -209,7 +204,7 @@ func (b *Backend) createBufferFromTensor(t *tensor.RawTensor) *wgpu.Buffer {
 	}
 
 	// CPU tensor - upload data to GPU
-	return b.createBuffer(t.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	return b.createBuffer(t.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 }
 
 // createParamsBuffer creates a uniform buffer with element count parameter.
@@ -285,7 +280,7 @@ func (b *Backend) runMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTensor, 
 
 	// Storage buffer for compute output; ownership transfers to addComputePassToEncoder.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -344,7 +339,7 @@ func (b *Backend) runUnaryOpLazy(x *tensor.RawTensor, shaderName, shaderCode str
 
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -392,7 +387,7 @@ func (b *Backend) runScalarOpLazy(x *tensor.RawTensor, scalar float32, shaderNam
 
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -479,7 +474,7 @@ func (b *Backend) runBatchMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTen
 	// Intermediate Storage buffer: written by compute shader, source for CopyBufferToBuffer.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -545,7 +540,7 @@ func (b *Backend) runTransposeLazy(input *tensor.RawTensor) (*tensor.RawTensor, 
 	// Intermediate Storage buffer: written by compute shader, source for CopyBufferToBuffer.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -606,7 +601,7 @@ func (b *Backend) runSoftmaxLazy(input *tensor.RawTensor) (*tensor.RawTensor, er
 	// Intermediate Storage buffer: written by compute shader, source for CopyBufferToBuffer.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -709,7 +704,7 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	// Intermediate Storage buffer: written by compute shader, source for CopyBufferToBuffer.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, bufErr := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if bufErr != nil {
@@ -849,7 +844,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	// Intermediate Storage buffer: written by compute shader, source for CopyBufferToBuffer.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, bufErr := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if bufErr != nil {
@@ -919,7 +914,6 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 
 // runGatherLazy executes Gather operation with lazy result.
 // Input must be float32, indices must be int32.
-//
 func (b *Backend) runGatherLazy(input *tensor.RawTensor, dim int, indices *tensor.RawTensor) (*tensor.RawTensor, error) {
 	if input.DType() != tensor.Float32 {
 		return nil, &lazyError{msg: "gather: input must be float32"}
@@ -969,7 +963,7 @@ func (b *Backend) runGatherLazy(input *tensor.RawTensor, dim int, indices *tenso
 	// Intermediate Storage buffer: written by compute shader, source for CopyBufferToBuffer.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, bufErr := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  gatherResultSize,
 	})
 	if bufErr != nil {
@@ -1105,7 +1099,7 @@ func (b *Backend) runWhereLazy(condition, x, y *tensor.RawTensor) (*tensor.RawTe
 	// Intermediate Storage buffer: written by compute shader, source for CopyBufferToBuffer.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, bufErr := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if bufErr != nil {
@@ -1184,7 +1178,7 @@ func (b *Backend) runSumLazy(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	partialSumsSize := uint64(numWorkgroups) * 4
 
 	bufferPartialSums, bufErr := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  partialSumsSize,
 	})
 	if bufErr != nil {
@@ -1262,7 +1256,7 @@ func (b *Backend) runClampLazy(input *tensor.RawTensor, minBound, maxBound any) 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -1270,7 +1264,7 @@ func (b *Backend) runClampLazy(input *tensor.RawTensor, minBound, maxBound any) 
 	}
 
 	stagingBuf, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageMapRead | wgpu.BufferUsageCopyDst | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -1323,7 +1317,6 @@ func putInt32LE(b []byte, v int32) {
 //
 // The shader dispatches one invocation per destination row (per-row approach) to
 // avoid the need for f32 atomics, which are not available in WebGPU core WGSL.
-//
 func (b *Backend) runSelectAddLazy(dest, indices, src *tensor.RawTensor) (*tensor.RawTensor, error) {
 	if dest.DType() != tensor.Float32 {
 		return nil, &lazyError{msg: "selectAdd: dest must be float32"}
@@ -1356,7 +1349,7 @@ func (b *Backend) runSelectAddLazy(dest, indices, src *tensor.RawTensor) (*tenso
 	// Storage buffer written by the compute shader.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -1412,7 +1405,6 @@ func (b *Backend) runSelectAddLazy(dest, indices, src *tensor.RawTensor) (*tenso
 //
 // The shader dispatches one invocation per destination element (per-element approach),
 // iterating over all src elements to find matches. No f32 atomics required.
-//
 func (b *Backend) runScatterAddLazy(dest *tensor.RawTensor, dim int, indices, src *tensor.RawTensor) (*tensor.RawTensor, error) {
 	if dest.DType() != tensor.Float32 {
 		return nil, &lazyError{msg: "scatterAdd: dest must be float32"}
@@ -1450,7 +1442,7 @@ func (b *Backend) runScatterAddLazy(dest *tensor.RawTensor, dim int, indices, sr
 	// Storage buffer written by the compute shader.
 	// Ownership transfers to addComputePassToEncoder — do NOT defer-release.
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {

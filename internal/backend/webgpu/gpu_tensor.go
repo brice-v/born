@@ -1,5 +1,3 @@
-//go:build windows
-
 // Package webgpu implements the WebGPU backend for GPU-accelerated tensor operations.
 package webgpu
 
@@ -7,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/born-ml/born/internal/tensor"
-	wgpu "github.com/gogpu/wgpu"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // GPUTensor holds tensor data in GPU memory without transferring to CPU.

@@ -1,5 +1,3 @@
-//go:build windows
-
 package webgpu
 
 import (
@@ -7,8 +5,7 @@ import (
 	"fmt"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/gogpu/gputypes"
-	wgpu "github.com/gogpu/wgpu"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // GPUTape records GPU operations for backward pass.
@@ -227,7 +224,7 @@ func (b *Backend) ReLUBackwardGPU(input, grad *GPUTensor) *GPUTensor {
 	// Create output buffer
 	resultSize := input.ByteSize()
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -327,7 +324,7 @@ func (b *Backend) SoftmaxBackwardGPU(output, grad *GPUTensor, dim int) *GPUTenso
 	// Create output buffer
 	resultSize := output.ByteSize()
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -407,7 +404,7 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 
 	resultSize := uint64(batchSize * t.dtype.Size()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	if err != nil {

@@ -1,5 +1,3 @@
-//go:build windows
-
 // Package webgpu implements the WebGPU backend for GPU-accelerated tensor operations.
 package webgpu
 
@@ -8,8 +6,7 @@ import (
 	"runtime"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/gogpu/gputypes"
-	wgpu "github.com/gogpu/wgpu"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,7 +45,7 @@ func (b *Backend) finishActiveBatchLocked() {
 		enc.CopyBufferToBuffer(cp.src, 0, cp.dst, 0, cp.size)
 	}
 
-	cmdBuffer, err := enc.Finish()
+	cmdBuffer, err := enc.Finish(nil)
 	if err != nil {
 		// On Finish error, release everything to avoid leaks and panic loudly.
 		for _, buf := range b.activeBatch.resultBufs {
@@ -87,7 +84,6 @@ func (b *Backend) finishActiveBatchLocked() {
 //
 // res.buffers and res.bindGroups follow the same ownership rules as
 // finishAndQueueLazy: they must NOT be defer-released by the caller.
-//
 func (b *Backend) addComputePassToEncoder(
 	pipeline *wgpu.ComputePipeline,
 	bg *wgpu.BindGroup,
@@ -103,21 +99,10 @@ func (b *Backend) addComputePassToEncoder(
 
 	enc := b.getOrCreateEncoderLocked()
 
-	computePass, err := enc.BeginComputePass(nil)
-	if err != nil {
-		b.pendingMu.Unlock()
-		// Release caller-owned resources on failure.
-		resultBuf.Release()
-		stagingBuf.Release()
-		for _, buf := range res.buffers {
-			buf.Release()
-		}
-		bg.Release()
-		return nil, fmt.Errorf("addComputePassToEncoder: BeginComputePass: %w", err)
-	}
+	computePass := enc.BeginComputePass(nil)
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bg, nil)
-	computePass.Dispatch(workgroupsX, workgroupsY, workgroupsZ)
+	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, workgroupsZ)
 	if err := computePass.End(); err != nil {
 		b.pendingMu.Unlock()
 		resultBuf.Release()
@@ -202,7 +187,7 @@ func (b *Backend) getOrCreateInputBuffer(t *tensor.RawTensor) *wgpu.Buffer {
 	b.inputBufferCache.mu.RUnlock()
 
 	// Cache miss — upload CPU data to a new GPU storage buffer.
-	buf := b.createBuffer(t.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	buf := b.createBuffer(t.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	size := uint64(t.ByteSize()) //nolint:gosec // G115: ByteSize is non-negative
 
 	b.inputBufferCache.mu.Lock()
@@ -260,4 +245,3 @@ func (b *Backend) activeBatchCount() int {
 	defer b.pendingMu.Unlock()
 	return b.activeBatch.count
 }
-

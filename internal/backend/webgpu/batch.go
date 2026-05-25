@@ -1,11 +1,9 @@
-//go:build windows
-
 package webgpu
 
 import (
 	"fmt"
 
-	wgpu "github.com/gogpu/wgpu"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // CommandBatch accumulates GPU operations for single submission.
@@ -70,13 +68,11 @@ func (batch *CommandBatch) Submit() {
 	}
 
 	// Finish command encoder and submit all commands at once
-	cmdBuffer, err := batch.encoder.Finish()
+	cmdBuffer, err := batch.encoder.Finish(nil)
 	if err != nil {
 		panic(fmt.Sprintf("webgpu: CommandBatch.Submit: failed to finish encoder: %v", err))
 	}
-	if _, submitErr := batch.backend.queue.Submit(cmdBuffer); submitErr != nil {
-		panic(fmt.Sprintf("webgpu: CommandBatch.Submit: failed to submit commands: %v", submitErr))
-	}
+	batch.backend.queue.Submit(cmdBuffer)
 
 	// Mark all outputs as computed
 	for i := range batch.ops {

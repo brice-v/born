@@ -1,5 +1,3 @@
-//go:build windows
-
 package webgpu
 
 import (
@@ -8,8 +6,7 @@ import (
 	"math"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/gogpu/gputypes"
-	wgpu "github.com/gogpu/wgpu"
+	"github.com/cogentcore/webgpu/wgpu"
 )
 
 // FlashAttentionGPU executes Flash Attention 2 on GPU using WebGPU.
@@ -72,7 +69,7 @@ func (b *Backend) FlashAttentionGPU(
 	}
 
 	// Flash attention BGL: Q (RO), K (RO), V (RO), output (RW), params (uniform).
-	bglFlashAttn := []gputypes.BindGroupLayoutEntry{
+	bglFlashAttn := []wgpu.BindGroupLayoutEntry{
 		bglStorage(0, true),
 		bglStorage(1, true),
 		bglStorage(2, true),
@@ -85,18 +82,18 @@ func (b *Backend) FlashAttentionGPU(
 	entry := b.getOrCreatePipeline("flash_attention", shader, bglFlashAttn)
 
 	// Create GPU buffers
-	bufferQ := b.createBuffer(q.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferQ := b.createBuffer(q.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferQ.Release()
 
-	bufferK := b.createBuffer(k.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferK := b.createBuffer(k.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferK.Release()
 
-	bufferV := b.createBuffer(v.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
+	bufferV := b.createBuffer(v.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 	defer bufferV.Release()
 
 	outputSize := uint64(q.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bufferOutput, bufErr := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
 		Size:  outputSize,
 	})
 	if bufErr != nil {
