@@ -306,6 +306,86 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 `
 
+// signShader performs element-wise sign: result = sign(x).
+const signShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    size: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let idx = global_id.x;
+    if (idx < params.size) {
+        result[idx] = sign(input[idx]);
+    }
+}
+`
+
+// absShader performs element-wise absolute value: result = |x|.
+const absShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    size: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let idx = global_id.x;
+    if (idx < params.size) {
+        result[idx] = abs(input[idx]);
+    }
+}
+`
+
+// clampShader performs element-wise clamping: result = clamp(x, min, max).
+const clampShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    size: u32,
+    min: f32,
+    max: f32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let idx = global_id.x;
+    if (idx < params.size) {
+        result[idx] = clamp(input[idx], params.min, params.max);
+    }
+}
+`
+
+// clampShaderInt32 performs element-wise clamping for int32: result = clamp(x, min, max).
+const clampShaderInt32 = `
+@group(0) @binding(0) var<storage, read> input: array<i32>;
+@group(0) @binding(1) var<storage, read_write> result: array<i32>;
+
+struct Params {
+    size: u32,
+    min: i32,
+    max: i32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let idx = global_id.x;
+    if (idx < params.size) {
+        result[idx] = clamp(input[idx], params.min, params.max);
+    }
+}
+`
+
 // scalarMulShader performs scalar multiplication: result = x * scalar.
 const scalarMulShader = `
 @group(0) @binding(0) var<storage, read> input: array<f32>;
@@ -403,9 +483,39 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 `
 
+// erfShader performs element-wise error function: result = erf(x).
+// Abromowitz & Stegun approximation for erf(x).
+const erfShader = `
+fn erf(x: f32) -> f32 {
+    let sign = select(-1.0, 1.0, x >= 0.0);
+    let a = abs(x);
+    let t = 1.0 / (1.0 + 0.3275911 * a);
+    let poly = t * (0.254829592
+        + t * (-0.284496736
+        + t * (1.421413741
+        + t * (-1.453152027
+        + t * 1.061405429))));
+    return sign * (1.0 - poly * exp(-a * a));
+}
+
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    size: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let idx = global_id.x;
+    if (idx < params.size) {
+        result[idx] = erf(input[idx]);
+    }
+}
+`
+
 // siluShader performs SiLU activation: result = x * sigmoid(x) = x / (1 + exp(-x)).
-//
-//nolint:unused // Prepared for SiLU operation (will be used when SiLU is added to backend interface)
 const siluShader = `
 @group(0) @binding(0) var<storage, read> input: array<f32>;
 @group(0) @binding(1) var<storage, read_write> result: array<f32>;
@@ -1563,6 +1673,187 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     result[out_idx] = input[in_idx];
+}
+`
+
+// selectAddShader performs scatter-add with 1-D integer indices along an arbitrary dimension.
+//
+// Per-destination-row approach: each GPU invocation handles one output row, iterating over
+// all indices to find matches. No f32 atomics needed (WGSL only has atomicAdd for u32/i32).
+//
+// Bindings: 0=dest (RO), 1=indices (RO, i32), 2=src (RO), 3=result (RW), 4=params (uniform).
+//
+// Params layout (16 bytes):
+//
+//	[0] num_rows    - number of rows in dest (dest.Shape()[dim])
+//	[1] num_indices - number of indices / src rows along dim
+//	[2] inner_size  - product of all dimensions except dim
+//	[3] _pad        - unused padding
+const selectAddShader = `
+@group(0) @binding(0) var<storage, read> dest: array<f32>;
+@group(0) @binding(1) var<storage, read> indices: array<i32>;
+@group(0) @binding(2) var<storage, read> src: array<f32>;
+@group(0) @binding(3) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    num_rows: u32,
+    num_indices: u32,
+    inner_size: u32,
+    _pad: u32,
+}
+@group(0) @binding(4) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let row = gid.x;
+    if (row >= params.num_rows) { return; }
+
+    // Copy dest row to result first.
+    for (var j = 0u; j < params.inner_size; j++) {
+        result[row * params.inner_size + j] = dest[row * params.inner_size + j];
+    }
+
+    // Accumulate every src row whose index matches this destination row.
+    for (var i = 0u; i < params.num_indices; i++) {
+        if (u32(indices[i]) == row) {
+            for (var j = 0u; j < params.inner_size; j++) {
+                result[row * params.inner_size + j] += src[i * params.inner_size + j];
+            }
+        }
+    }
+}
+`
+
+// scatterAddShader performs scatter-add with N-D integer indices along a dimension.
+//
+// Per-destination-element approach: each GPU invocation handles one flat output index,
+// iterating over all src elements to find those that scatter into it. No f32 atomics needed.
+//
+// Bindings: 0=dest (RO), 1=indices (RO, i32), 2=src (RO), 3=result (RW), 4=params (uniform).
+//
+// Params layout (32 bytes, 8 u32):
+//
+//	[0] num_dest_elements  - total elements in dest
+//	[1] num_src_elements   - total elements in src
+//	[2] scatter_dim        - dimension along which scatter occurs
+//	[3] ndim               - number of dimensions (max 6)
+//	[4..7] dest_shape[0..3]- destination shape (up to 4 dimensions; remaining unused = 1)
+//	[8..11] dest_strides[0..3] - destination strides
+//	[12..15] src_strides[0..3] - source strides
+//
+// We pack all shape/stride fields into 48 bytes (16 u32s total = 64 bytes params buffer).
+const scatterAddShader = `
+@group(0) @binding(0) var<storage, read> dest: array<f32>;
+@group(0) @binding(1) var<storage, read> indices: array<i32>;
+@group(0) @binding(2) var<storage, read> src: array<f32>;
+@group(0) @binding(3) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    num_dest_elements: u32,
+    num_src_elements: u32,
+    scatter_dim: u32,
+    ndim: u32,
+    // destination shape (6 dims, padded with 1)
+    dest_shape_0: u32,
+    dest_shape_1: u32,
+    dest_shape_2: u32,
+    dest_shape_3: u32,
+    dest_shape_4: u32,
+    dest_shape_5: u32,
+    // destination strides
+    dest_stride_0: u32,
+    dest_stride_1: u32,
+    dest_stride_2: u32,
+    dest_stride_3: u32,
+    dest_stride_4: u32,
+    dest_stride_5: u32,
+    // source strides
+    src_stride_0: u32,
+    src_stride_1: u32,
+    src_stride_2: u32,
+    src_stride_3: u32,
+    src_stride_4: u32,
+    src_stride_5: u32,
+    _pad0: u32,
+    _pad1: u32,
+}
+@group(0) @binding(4) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let dest_idx = gid.x;
+    if (dest_idx >= params.num_dest_elements) { return; }
+
+    // Copy dest to result.
+    var val = dest[dest_idx];
+
+    // Unpack dest_idx into N-D coordinates.
+    var dest_strides: array<u32, 6>;
+    dest_strides[0] = params.dest_stride_0;
+    dest_strides[1] = params.dest_stride_1;
+    dest_strides[2] = params.dest_stride_2;
+    dest_strides[3] = params.dest_stride_3;
+    dest_strides[4] = params.dest_stride_4;
+    dest_strides[5] = params.dest_stride_5;
+
+    var src_strides: array<u32, 6>;
+    src_strides[0] = params.src_stride_0;
+    src_strides[1] = params.src_stride_1;
+    src_strides[2] = params.src_stride_2;
+    src_strides[3] = params.src_stride_3;
+    src_strides[4] = params.src_stride_4;
+    src_strides[5] = params.src_stride_5;
+
+    var dest_shape: array<u32, 6>;
+    dest_shape[0] = params.dest_shape_0;
+    dest_shape[1] = params.dest_shape_1;
+    dest_shape[2] = params.dest_shape_2;
+    dest_shape[3] = params.dest_shape_3;
+    dest_shape[4] = params.dest_shape_4;
+    dest_shape[5] = params.dest_shape_5;
+
+    // Decompose dest_idx into coordinates.
+    var dest_coords: array<u32, 6>;
+    var rem = dest_idx;
+    for (var d = 0u; d < params.ndim; d++) {
+        dest_coords[d] = rem / dest_strides[d];
+        rem = rem % dest_strides[d];
+    }
+
+    // For each src element, compute its dest coordinate along scatter_dim from indices[src_flat].
+    // If the resulting dest coordinates match dest_coords, accumulate src value.
+    for (var src_flat = 0u; src_flat < params.num_src_elements; src_flat++) {
+        // Decompose src_flat into source coordinates.
+        var src_coords: array<u32, 6>;
+        var src_rem = src_flat;
+        for (var d = 0u; d < params.ndim; d++) {
+            src_coords[d] = src_rem / src_strides[d];
+            src_rem = src_rem % src_strides[d];
+        }
+
+        // The destination coordinate along scatter_dim comes from indices[src_flat].
+        let scatter_coord = u32(indices[src_flat]);
+
+        // Build dest coordinates: scatter_dim replaced by scatter_coord, rest same.
+        var is_match = true;
+        for (var d = 0u; d < params.ndim; d++) {
+            if (d == params.scatter_dim) {
+                if (dest_coords[d] != scatter_coord) {
+                    is_match = false;
+                }
+            } else {
+                if (dest_coords[d] != src_coords[d]) {
+                    is_match = false;
+                }
+            }
+        }
+
+        if (is_match) {
+            val += src[src_flat];
+        }
+    }
+
+    result[dest_idx] = val;
 }
 `
 

@@ -62,7 +62,7 @@ prediction := model.Predict(image)
 - **WebAssembly** - Run inference in browsers natively
 
 ### GPU Acceleration
-- **WebGPU Backend** - Zero-CGO GPU via [go-webgpu](https://github.com/go-webgpu/webgpu), 123x MatMul speedup
+- **WebGPU Backend** - Zero-CGO GPU via [gogpu/wgpu](https://github.com/gogpu/wgpu) (pure Go), 123x MatMul speedup
 - **38+ GPU Operations** - MatMul, BatchMatMul, Conv2D, MaxPool2D, Softmax, and more
 - **Lazy Evaluation** - GPU-resident tensors, command batching (~90s → <5s/step)
 - **Multi-dim Transpose** - GPU-accelerated 3D/4D/5D/6D tensors
@@ -81,11 +81,14 @@ prediction := model.Predict(image)
 - **Text Generation** - Streaming API, stop sequences
 
 ### Model Import & Export
-- **ONNX Import** - Load PyTorch/TensorFlow models via `.onnx` (30+ operators)
+- **ONNX Import** - Load PyTorch/TensorFlow models via `.onnx` (49 operators)
 - **GGUF Import** - llama.cpp format with K-quant dequantization (Q4_K, Q5_K, Q6_K, Q8_0)
+- **LLaMA** - `models/llama.LoadGGUF()` for end-to-end LLaMA inference; verified on TinyLlama 1.1B Q8_0 and Q4_K_M
+- **Injectable Attention** - swap attention implementation at model load time for research experiments
 - **Native Format** - `.born` format with `nn.Save()` / `nn.Load()`
 - **Checkpoints** - Resume training with optimizer state preservation
 - **SafeTensors** - HuggingFace compatible export
+- **Reproducibility** - `nn.SetSeed()` for deterministic weight initialization
 
 ---
 
@@ -108,7 +111,7 @@ make install
 ### Development Setup
 
 **Requirements**:
-- Go 1.25+
+- Go 1.26+ (1.26 required for optional SIMD support via `GOEXPERIMENT=simd`)
 - Make (optional, but recommended)
 - golangci-lint (for linting)
 
@@ -169,24 +172,28 @@ func main() {
 
 **Run it:** `cd examples/mnist && go run .`
 
-### Example: LLM Text Generation
+### Example: LLM Inference (LLaMA)
 
 ```go
 package main
 
 import (
     "fmt"
+    "github.com/born-ml/born/backend/cpu"
+    "github.com/born-ml/born/models/llama"
     "github.com/born-ml/born/generate"
     "github.com/born-ml/born/tokenizer"
-    "github.com/born-ml/born/loader"
 )
 
 func main() {
+    backend := cpu.New()
+
+    // Load LLaMA model from GGUF (Q4_K_M, Q8_0, F16, F32 supported)
+    model, _ := llama.LoadGGUF("tinyllama-1.1b.Q8_0.gguf", backend)
+    defer model.Release()
+
     // Load tokenizer
     tok, _ := tokenizer.NewTikTokenForModel("gpt-4")
-
-    // Load model (GGUF format)
-    model, _ := loader.OpenModel("llama-7b.gguf")
 
     // Create generator with sampling config
     gen := generate.NewTextGenerator(model, tok, generate.SamplingConfig{
@@ -211,6 +218,8 @@ func main() {
     }
 }
 ```
+
+Verified working: TinyLlama 1.1B Q8_0 and Q4_K_M.
 
 **Core Features:**
 - ✅ Tensor operations (Add, MatMul, Reshape, Exp, Sqrt, Cat, etc.)
@@ -244,7 +253,7 @@ type Backend interface {
 | Backend | Status | Description |
 |---------|--------|-------------|
 | CPU | ✅ **Available** | Pure Go implementation, all operations |
-| WebGPU | ✅ **Available** | Zero-CGO GPU via [go-webgpu](https://github.com/go-webgpu/webgpu) |
+| WebGPU | ✅ **Available** | Zero-CGO GPU via [gogpu/wgpu](https://github.com/gogpu/wgpu) (pure Go) |
 | Vulkan | 📋 Planned | Cross-platform GPU compute (Linux focus) |
 | CUDA | 📋 Planned | NVIDIA GPU via zero-CGO |
 | Metal | 📋 Planned | Apple GPU (macOS/iOS) |
@@ -271,35 +280,14 @@ type Backend interface {
 
 **GPU Backend Setup:**
 
-WebGPU requires the `wgpu_native` library. Download from [wgpu-native releases](https://github.com/gfx-rs/wgpu-native/releases):
+The WebGPU backend uses [gogpu/wgpu](https://github.com/gogpu/wgpu) — a pure Go WebGPU implementation. **No shared libraries, no DLLs, no CGO.** Just `go build` and it works.
 
-**Windows (x64):**
 ```bash
-# Download latest release
-curl -LO https://github.com/gfx-rs/wgpu-native/releases/latest/download/wgpu-windows-x86_64-msvc-release.zip
-unzip wgpu-windows-x86_64-msvc-release.zip
-
-# Install DLL system-wide (requires admin)
-copy lib\wgpu_native.dll C:\Windows\System32\
-
-# Or place next to your executable
-copy lib\wgpu_native.dll .\your-app\
+# That's it. No downloads, no system libraries.
+go build ./...
 ```
 
-**Linux (x64):**
-```bash
-curl -LO https://github.com/gfx-rs/wgpu-native/releases/latest/download/wgpu-linux-x86_64-release.zip
-unzip wgpu-linux-x86_64-release.zip
-sudo cp lib/libwgpu_native.so /usr/local/lib/
-sudo ldconfig
-```
-
-**macOS (ARM64):**
-```bash
-curl -LO https://github.com/gfx-rs/wgpu-native/releases/latest/download/wgpu-macos-aarch64-release.zip
-unzip wgpu-macos-aarch64-release.zip
-sudo cp lib/libwgpu_native.dylib /usr/local/lib/
-```
+Currently supported on **Windows (D3D12)**. Linux (Vulkan) and macOS (Metal) support coming soon — gogpu/wgpu supports all three backends.
 
 **Usage:**
 ```go
@@ -375,7 +363,7 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 - Tokenizers (TikToken, BPE), text generation with streaming
 
 **Model Import & Export**
-- ONNX import (30+ operators)
+- ONNX import (49 operators)
 - GGUF loading (LLaMA, Mistral, DeepSeek)
 - Native `.born` format, SafeTensors export
 
@@ -523,20 +511,18 @@ Born is inspired by and learns from:
 
 Special thanks to the projects that made Born possible:
 
-### 🙏 [go-webgpu](https://github.com/AlfredDobra662/webgpu) & [wgpu-native](https://github.com/gfx-rs/wgpu-native)
+### 🙏 [gogpu/wgpu](https://github.com/gogpu/wgpu) & [gogpu/naga](https://github.com/gogpu/naga)
 
-Born's GPU acceleration is powered by **go-webgpu** - a remarkable pure Go binding for WebGPU via **wgpu-native**.
+Born's GPU acceleration is powered by **gogpu/wgpu** — a pure Go WebGPU implementation with **gogpu/naga** shader compiler.
 
 **Why this stack is special:**
-- **Zero CGO** - Pure Go bindings using [goffi](https://github.com/AlfredDobra662/goffi) for FFI
-- **Cross-platform** - Works on Windows (D3D12), Linux (Vulkan), macOS (Metal)
-- **Modern API** - Clean, idiomatic Go interface to WebGPU
-- **wgpu-native** - Battle-tested Rust implementation of WebGPU by [gfx-rs](https://github.com/gfx-rs)
-- **Active development** - Both projects are actively maintained
+- **Pure Go** — No CGO, no shared libraries, no runtime dependencies
+- **Single binary** — `go build` produces one executable with GPU support built in
+- **Cross-platform** — Windows (D3D12) now, Linux (Vulkan) and macOS (Metal) coming soon
+- **naga compatibility** — Shader compiler is 100% compatible with Rust naga
+- **Integrated development** — Both gogpu and Born are developed by the same team
 
-Without go-webgpu and wgpu-native, Born would need CGO for GPU support, making cross-compilation complex and defeating our "pure Go" goal. This stack enables us to offer **production-ready GPU acceleration** while maintaining the simplicity of `go build`.
-
-Thank you to [Alfred Dobra](https://github.com/AlfredDobra662), [gfx-rs team](https://github.com/gfx-rs), and all contributors!
+No DLL downloads, no `LD_LIBRARY_PATH`, no system-level installs. True single binary deployment for production ML inference.
 
 ---
 
@@ -574,7 +560,7 @@ See [LICENSE](LICENSE) file for full terms.
 A: Gorgonia is great but uses a different approach. Born focuses on modern Go (generics), pure Go (no CGO), and production-first design inspired by Burn.
 
 **Q: Can I run LLMs with Born?**
-A: Yes! Full LLM support included - GGUF model loading, tokenizers, sampling strategies, and text generation with streaming. Load LLaMA, Mistral, or DeepSeek models directly.
+A: Yes. Use `models/llama.LoadGGUF()` to load LLaMA-compatible GGUF files directly — verified on TinyLlama 1.1B Q8_0 and Q4_K_M. Tokenizers, sampling strategies, KV-cache, and streaming generation are all included.
 
 **Q: When will it be ready?**
 A: Core features are released! CPU/GPU backends, transformers, LLM support, and ONNX import all work. See [ROADMAP.md](ROADMAP.md) for upcoming features.
@@ -589,7 +575,7 @@ A: Yes! Pure Go compiles to WASM natively. Inference in browsers out of the box.
 A: LLaMA 2/3, Mistral, DeepSeek, and compatible architectures. GQA, RoPE, SwiGLU are all supported.
 
 **Q: How do I enable GPU acceleration?**
-A: Install `wgpu_native` library from [wgpu-native releases](https://github.com/gfx-rs/wgpu-native/releases), then use `webgpu.IsAvailable()` to check GPU support. See [Architecture](#backend-abstraction) for setup instructions. **38+ GPU operations** included - everything needed for LLM inference!
+A: No install required. The WebGPU backend uses [gogpu/wgpu](https://github.com/gogpu/wgpu) — pure Go, zero CGO, zero runtime libraries. Run `go build ./...` and use `webgpu.IsAvailable()` to check GPU support at runtime. See [Architecture](#backend-abstraction) for setup. **38+ GPU operations** included — everything needed for LLM inference.
 
 **Q: What GPU operations are supported?**
 A: **All operations needed for production ML!** Math (Add, Mul, Exp, etc.), Matrix (MatMul, BatchMatMul, Conv2D), Activations (ReLU, Softmax), Comparisons (Greater, Equal), Boolean (And, Or, Not), Reductions (Sum, Argmax), and more. See the [WebGPU Operation Table](#backend-abstraction).

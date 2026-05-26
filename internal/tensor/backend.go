@@ -44,12 +44,16 @@ type Backend interface {
 	DivScalar(x *RawTensor, scalar any) *RawTensor // divide by scalar
 
 	// Math operations (element-wise)
-	Exp(x *RawTensor) *RawTensor   // exponential
-	Log(x *RawTensor) *RawTensor   // natural logarithm
-	Sqrt(x *RawTensor) *RawTensor  // square root
-	Rsqrt(x *RawTensor) *RawTensor // reciprocal square root (1/sqrt(x))
-	Cos(x *RawTensor) *RawTensor   // cosine
-	Sin(x *RawTensor) *RawTensor   // sine
+	Exp(x *RawTensor) *RawTensor                           // exponential
+	Log(x *RawTensor) *RawTensor                           // natural logarithm
+	Sqrt(x *RawTensor) *RawTensor                          // square root
+	Rsqrt(x *RawTensor) *RawTensor                         // reciprocal square root (1/sqrt(x))
+	Cos(x *RawTensor) *RawTensor                           // cosine
+	Sin(x *RawTensor) *RawTensor                           // sine
+	Erf(x *RawTensor) *RawTensor                           // error function
+	Sign(x *RawTensor) *RawTensor                          // sign function
+	Abs(x *RawTensor) *RawTensor                           // absolute value
+	Clamp(x *RawTensor, minBound, maxBound any) *RawTensor // clamp values to [min, max]
 
 	// Activation functions
 	Softmax(x *RawTensor, dim int) *RawTensor // softmax along dimension
@@ -83,6 +87,32 @@ type Backend interface {
 	Gather(x *RawTensor, dim int, index *RawTensor) *RawTensor // select elements along dim using index tensor
 	Where(condition, x, y *RawTensor) *RawTensor               // conditional element selection
 	Embedding(weight, indices *RawTensor) *RawTensor           // lookup embeddings by indices
+
+	// SelectAdd performs a scatter-add: accumulates src rows into dest at indexed positions.
+	//
+	// For dim=0 (the primary use case for Embedding backward):
+	//
+	//	dest: [V, D], indices: [N] (int32), src: [N, D]
+	//	For each i: result[indices[i], :] += src[i, :]
+	//
+	// Returns a new tensor (dest is not modified in-place).
+	// Semantics follow Burn's float_select_add: scatter-add along the given dimension.
+	// indices must be 1-D.
+	SelectAdd(dest *RawTensor, dim int, indices *RawTensor, src *RawTensor) *RawTensor
+
+	// ScatterAdd performs a general scatter-add matching the semantics of Gather backward.
+	//
+	// For each flat position i in indices (same shape as src):
+	//
+	//	result[..., indices[...], ...] += src[...]   (the replaced axis is dim)
+	//
+	// This is the inverse of Gather: Gather selects elements, ScatterAdd accumulates
+	// gradients back. indices has the same shape as src, with each element specifying
+	// the position in dest along dim. Semantics follow Burn's float_scatter_add.
+	//
+	// Returns a new tensor with the same shape as dest. dest is not modified.
+	// indices must have dtype int32.
+	ScatterAdd(dest *RawTensor, dim int, indices *RawTensor, src *RawTensor) *RawTensor
 
 	// Shape operations (broadcast)
 	Expand(x *RawTensor, shape Shape) *RawTensor // broadcast to shape

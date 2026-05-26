@@ -6,6 +6,9 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
+// PoolDims is tensor.PoolDims, defined in the shared tensor package.
+type PoolDims = tensor.PoolDims
+
 // MaxPool2D performs 2D max pooling.
 //
 // Max pooling reduces spatial dimensions by taking the maximum value
@@ -71,12 +74,19 @@ func (cpu *CPUBackend) MaxPool2D(input *tensor.RawTensor, kernelSize, stride int
 		panic(fmt.Sprintf("maxpool2d: failed to create output: %v", err))
 	}
 
+	poolDims := &PoolDims{
+		N: N, C: C, H: H, W: W,
+		KH: kernelSize, KW: kernelSize,
+		HOut: HOut, WOut: WOut,
+		Stride: stride,
+	}
+
 	// Dispatch to type-specific implementation
 	switch input.DType() {
 	case tensor.Float32:
-		maxpool2dFloat32(output, input, N, C, H, W, HOut, WOut, kernelSize, stride)
+		maxpool2dFloat32(output, input, poolDims)
 	case tensor.Float64:
-		maxpool2dFloat64(output, input, N, C, H, W, HOut, WOut, kernelSize, stride)
+		maxpool2dFloat64(output, input, poolDims)
 	default:
 		panic(fmt.Sprintf("maxpool2d: unsupported dtype %v", input.DType()))
 	}
@@ -85,9 +95,18 @@ func (cpu *CPUBackend) MaxPool2D(input *tensor.RawTensor, kernelSize, stride int
 }
 
 // maxpool2dFloat32 performs max pooling for float32 tensors.
-func maxpool2dFloat32(output, input *tensor.RawTensor, N, C, H, W, HOut, WOut, kernelSize, stride int) {
+func maxpool2dFloat32(output, input *tensor.RawTensor, dims *PoolDims) {
 	inputData := input.AsFloat32()
 	outputData := output.AsFloat32()
+
+	N := dims.N
+	C := dims.C
+	H := dims.H
+	W := dims.W
+	HOut := dims.HOut
+	WOut := dims.WOut
+	kernelSize := dims.KH
+	stride := dims.Stride
 
 	// For each batch
 	for n := 0; n < N; n++ {
@@ -99,35 +118,14 @@ func maxpool2dFloat32(output, input *tensor.RawTensor, N, C, H, W, HOut, WOut, k
 
 			// For each output position
 			for outH := 0; outH < HOut; outH++ {
-				// Compute pooling window start positions
 				hStart := outH * stride
 
 				for outW := 0; outW < WOut; outW++ {
 					wStart := outW * stride
 
-					// Find max value in pooling window
-					maxVal := float32(-1e38) // Negative infinity approximation
-
-					for kh := 0; kh < kernelSize; kh++ {
-						h := hStart + kh
-						// Pre-slice row: eliminates h*W bounds check
-						rowStart := h * W
-						rowData := channelData[rowStart : rowStart+W]
-
-						for kw := 0; kw < kernelSize; kw++ {
-							w := wStart + kw
-							// Single bounds check via pre-slice
-							val := rowData[w]
-
-							if val > maxVal {
-								maxVal = val
-							}
-						}
-					}
-
-					// Store max value
+					// Find max value in pooling window via helper.
 					outputIdx := ((n*C+c)*HOut+outH)*WOut + outW
-					outputData[outputIdx] = maxVal
+					outputData[outputIdx] = poolWindowMaxFloat32(channelData, hStart, wStart, kernelSize, W)
 				}
 			}
 		}
@@ -135,9 +133,18 @@ func maxpool2dFloat32(output, input *tensor.RawTensor, N, C, H, W, HOut, WOut, k
 }
 
 // maxpool2dFloat64 performs max pooling for float64 tensors.
-func maxpool2dFloat64(output, input *tensor.RawTensor, N, C, H, W, HOut, WOut, kernelSize, stride int) {
+func maxpool2dFloat64(output, input *tensor.RawTensor, dims *PoolDims) {
 	inputData := input.AsFloat64()
 	outputData := output.AsFloat64()
+
+	N := dims.N
+	C := dims.C
+	H := dims.H
+	W := dims.W
+	HOut := dims.HOut
+	WOut := dims.WOut
+	kernelSize := dims.KH
+	stride := dims.Stride
 
 	// For each batch
 	for n := 0; n < N; n++ {
@@ -149,35 +156,14 @@ func maxpool2dFloat64(output, input *tensor.RawTensor, N, C, H, W, HOut, WOut, k
 
 			// For each output position
 			for outH := 0; outH < HOut; outH++ {
-				// Compute pooling window start positions
 				hStart := outH * stride
 
 				for outW := 0; outW < WOut; outW++ {
 					wStart := outW * stride
 
-					// Find max value in pooling window
-					maxVal := float64(-1e308) // Negative infinity approximation
-
-					for kh := 0; kh < kernelSize; kh++ {
-						h := hStart + kh
-						// Pre-slice row: eliminates h*W bounds check
-						rowStart := h * W
-						rowData := channelData[rowStart : rowStart+W]
-
-						for kw := 0; kw < kernelSize; kw++ {
-							w := wStart + kw
-							// Single bounds check via pre-slice
-							val := rowData[w]
-
-							if val > maxVal {
-								maxVal = val
-							}
-						}
-					}
-
-					// Store max value
+					// Find max value in pooling window via helper.
 					outputIdx := ((n*C+c)*HOut+outH)*WOut + outW
-					outputData[outputIdx] = maxVal
+					outputData[outputIdx] = poolWindowMaxFloat64(channelData, hStart, wStart, kernelSize, W)
 				}
 			}
 		}

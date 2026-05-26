@@ -324,6 +324,24 @@ func (b *Backend) TanhGPU(t *GPUTensor) *GPUTensor {
 	return b.runUnaryOpGPU(t, "tanh", tanhShader)
 }
 
+// ErfGPU applies error function activation on GPU.
+// Data stays on GPU - no CPU transfer occurs.
+func (b *Backend) ErfGPU(t *GPUTensor) *GPUTensor {
+	return b.runUnaryOpGPU(t, "erf", erfShader)
+}
+
+// SignGPU applies sign activation on GPU.
+// Data stays on GPU - no CPU transfer occurs.
+func (b *Backend) SignGPU(t *GPUTensor) *GPUTensor {
+	return b.runUnaryOpGPU(t, "sign", signShader)
+}
+
+// AbsGPU applies absolute value activation on GPU.
+// Data stays on GPU - no CPU transfer occurs.
+func (b *Backend) AbsGPU(t *GPUTensor) *GPUTensor {
+	return b.runUnaryOpGPU(t, "abs", absShader)
+}
+
 // SoftmaxGPU applies softmax activation along the specified dimension.
 // For now, only last dimension (dim=-1) is supported efficiently on GPU.
 // Data stays on GPU - no CPU transfer occurs.

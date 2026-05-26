@@ -2236,3 +2236,85 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	copy(result.Data(), resultData)
 	return result, nil
 }
+
+// runClamp restricts tensor values element-wise to [minBound, maxBound].
+// Supports float32 and int32 dtypes.
+func (b *Backend) runClamp(input *tensor.RawTensor, minBound, maxBound any) (*tensor.RawTensor, error) {
+	dtype := input.DType()
+	if dtype != tensor.Float32 && dtype != tensor.Int32 {
+		return nil, fmt.Errorf("webgpu: Clamp: only float32 and int32 are supported, got %s", dtype)
+	}
+
+	numElements := input.NumElements()
+
+	shaderName, shaderCode := selectBinaryShader(dtype, "clamp", clampShader, clampShaderInt32)
+
+	shader := b.compileShader(shaderName, shaderCode)
+	pipeline := b.getOrCreatePipeline(shaderName, shader)
+
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	defer bufferInput.Release()
+
+	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Size:  resultSize,
+	})
+	defer bufferResult.Release()
+
+	params := make([]byte, 16)
+	putUint32LE(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
+
+	if dtype == tensor.Float32 {
+		minVal := minBound.(float32)
+		maxVal := maxBound.(float32)
+		putFloat32LE(params[4:8], minVal)
+		putFloat32LE(params[8:12], maxVal)
+	} else {
+		minVal := minBound.(int32)
+		maxVal := maxBound.(int32)
+		putInt32LE(params[4:8], minVal)
+		putInt32LE(params[8:12], maxVal)
+	}
+	bufferParams := b.createUniformBuffer(params)
+	defer bufferParams.Release()
+
+	bindGroupLayout := pipeline.GetBindGroupLayout(0)
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, resultSize),
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, 16),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
+	defer bindGroup.Release()
+
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
+	computePass := encoder.BeginComputePass(nil)
+	computePass.SetPipeline(pipeline)
+	computePass.SetBindGroup(0, bindGroup, nil)
+
+	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
+	computePass.DispatchWorkgroups(workgroups, 1, 1)
+	computePass.End()
+
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
+	b.queue.Submit(cmdBuffer)
+
+	resultData, err := b.readBuffer(bufferResult, resultSize)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := tensor.NewRaw(input.Shape(), dtype, tensor.WebGPU)
+	if err != nil {
+		return nil, err
+	}
+	copy(result.Data(), resultData)
+	return result, nil
+}

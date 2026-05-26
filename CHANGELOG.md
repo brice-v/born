@@ -5,6 +5,349 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.9.1] - 2026-05-19
+
+### Added
+
+- **GPU shared encoder accumulator** ([ADR-012](docs/dev/ADR-012-gpu-encoder-batching-buffer-cache.md))
+  - One CommandEncoder for N compute passes instead of N encoders
+  - 128 Finish() calls → 1 per batch. GPU utilization 55% → 70-80%
+  - All 15 lazy ops simplified via `addComputePassToEncoder`
+  - Net -456 lines from lazy ops
+- **GPU input buffer cache**
+  - `getOrCreateInputBuffer`: caches tensor→GPU buffer by identity
+  - Weight matrices uploaded once, reused across forward+backward
+  - `clearInputBufferCache` for cleanup
+- **17 enterprise GPU tests**: shared encoder correctness (500-op chain), cache hit rate, invalidation, auto-flush, flush-on-readback, lazy chain, mixed-ops batching
+
+### Fixed
+
+- **GPU batched dispatch**: auto-flush pending command buffers every 128 dispatches
+  - Prevents Windows TDR timeout (VK_ERROR_DEVICE_LOST) on integrated GPUs
+  - Before: eval passes with 13K+ dispatches accumulated without flush → GPU killed by OS
+  - After: 128 ops per Submit — safe for all GPUs while still 128x fewer Submits than pre-v0.9.0
+
+## [0.9.0] - 2026-05-17
+
+### Added
+
+- **CPU parallel BatchMatMul** — `sync.WaitGroup` + goroutines across batch dimension
+  - Threshold: B ≤ 4 → sequential, B > 4 → parallel (`runtime.NumCPU()` workers)
+  - All 4 variants: Float32, Float64, BroadcastFloat32, BroadcastFloat64
+  - Fixed race condition: capped slice prevents overlapping zero-init across goroutines
+- **CPU cache-tiled blocked MatMul** — 3-5x speedup for large matrices
+  - i-block→k-block→j-block loop order (sequential B-matrix access)
+  - Block sizes: 64 (float32, 16KB L1), 32 (float64, 8KB L1)
+  - Threshold: m×n×k < 262K → naive fallback (overhead > benefit)
+  - Micro-kernel extracted for compiler inlining
+- **AVX2 SIMD MatMul micro-kernel** via Go 1.26 `goexperiment.simd`
+  - `simd/archsimd`: LoadFloat32x8, BroadcastFloat32x8, MulAdd (FMA)
+  - 4-row × 16-wide register block, zero allocations
+  - Benchmark: 128×128 micro-kernel 3693 → 1058 ns/op (**3.49x**)
+  - Build tag: `//go:build amd64 && goexperiment.simd` + scalar fallback
+  - 13 correctness subtests
+- **GPU batched dispatch** — queue lazy ops, single `queue.Submit` on Data() access
+  - `finishAndQueueLazy` queues command buffers instead of immediate Submit
+  - `flushCommands` submits all pending in single variadic `queue.Submit(cmdBufs...)`
+  - All GPU resources (buffers + bind groups) kept alive via `lazyResources` until after Submit
+  - Before: 50+ Submits per transformer forward pass (~25ms overhead). After: 1 Submit per readback
+- **Embedding backward tests** — 5 tests covering 1D/2D shapes, duplicate indices, gradient flow, MulScalar chain
+- **Go 1.26** — minimum Go version updated from 1.25 to 1.26 for `simd/archsimd` support
+
+### Fixed
+
+- **GPU batched dispatch**: bind groups and input buffers kept alive until after queue.Submit (BUG-LAZY-DEFER-RELEASE for all resource types)
+- **GPU buffer copy**: `copyGPUBuffer` flushes pending commands + Poll before copy (prevents reading unsubmitted staging data)
+
+## [0.8.3] - 2026-05-16
+
+### Added
+
+- **WebGPU GPU compute shaders for SelectAdd/ScatterAdd** — eliminates CPU-fallback bottleneck
+  - SelectAdd: per-destination-row WGSL shader, no f32 atomics required
+  - ScatterAdd: per-destination-element WGSL shader, supports up to 6D tensors
+  - Results stay on GPU as lazy tensors — no GPU→CPU readback for intermediate backward results
+  - Before: 27K ReadGPUBuffer calls per HRM backward step. After: 1 GPU dispatch each
+  - HRM training: step time reduced from minutes to seconds
+  - 13 GPU tests with CPU-GPU numeric parity verification
+  - CPU fallback retained for non-lazy mode and unsupported dtypes
+- `BORN_DEBUG_GPU=1` environment variable for diagnostic stderr logging of ReadGPUBuffer Poll/Map calls
+
+### Fixed
+
+- **WebGPU ReadGPUBuffer**: 10s timeout on `buffer.Map()` to prevent infinite hang if staging buffer is in invalid state
+
+## [0.8.2] - 2026-05-16
+
+### Added
+
+- `SelectAdd` backend operation — scatter-add with 1-D indices (Embedding backward)
+  - CPU: all dtypes with flat-index computation, 7 tests
+  - WebGPU: CPU-data fallback (f32 atomics not in WGSL core spec)
+- `ScatterAdd` backend operation — scatter-add with N-D indices (Gather backward)
+  - CPU: all dtypes, validates shapes and index bounds
+  - WebGPU: CPU-data fallback
+- `MulScalarOp`, `AddScalarOp`, `SubScalarOp`, `DivScalarOp` autodiff operations
+  - All four scalar ops now record on the gradient tape
+  - Previously scalar ops were proxy-only — gradients did not flow through them
+
+### Fixed
+
+- **Tokenizer**: HuggingFace tokenizer now applies normalizer from tokenizer.json
+  - SentencePiece models (LLaMA, Mistral) require Prepend+Replace normalizer to map spaces to `▁` (U+2581)
+  - Without normalization, every token was wrong ("The" → ID 1576 instead of "▁The" → ID 450)
+  - Supported normalizers: Sequence, Prepend, Replace, Lowercase, Strip
+  - 13 new tests for normalizer parsing and word splitting
+- **Autodiff**: Scalar ops (MulScalar, AddScalar, SubScalar, DivScalar) not recorded on gradient tape
+  - Embedding weights received zero gradients when scaled by `embedScale * tokenEmbedding`
+  - All models using `MulScalar` in forward pass had broken gradient flow
+
+### Changed
+
+- **Autodiff backward ops**: Migrated 7 ops from CPU-fallback to forward composition ([ADR-009](docs/dev/ADR-009-backward-ops-composition.md))
+  - SiLU, Log, ReLU, CrossEntropy, MeanDim, Embedding, Gather backward now use backend ops only
+  - Tensors never leave the GPU during backward pass (eliminates GPU→CPU readback)
+  - Helper functions (`sumAll`, `sumAlongDimension`, `negateGradient`) now delegate to backend
+  - Follows Burn (Rust) reference architecture: all gradients via forward ops composition
+  - Net -835 lines of CPU-only backward code replaced by backend-delegated operations
+
+## [0.8.1] - 2026-05-15
+
+### Added
+
+- `models/llama`: New LLaMA model package with GGUF loading and injectable attention
+  - `Model[B]`, `Layer[B]`, `NewModel`, `NewModelCache` — full transformer decoder
+  - Grouped-Query Attention (GQA) with RoPE (rotate-half convention)
+  - SwiGLU FFN, RMSNorm, incremental KV-cache decoding
+  - `WithAttentionFunc` option for runtime attention replacement (Flash Attention, etc.)
+  - `Layer.DebugForward` returns attn and FFN contributions for diagnostics
+  - `LoadGGUF(path, backend)` — loads Q4_K, Q5_K, Q6_K, Q8_0, F16, F32 weights from GGUF files
+  - Implements `generate.LLMModel` interface — drop-in for `generate.TextGenerator`
+  - Tested with TinyLlama-1.1B-Q8_0: Paris top-1 answer confirmed
+  - Note: Q4_K_M (4-bit) requires quantized matmul for correct inference; Q8_0 (8-bit) works with full dequantization
+- `loader`: Public API for model loading (`LoadGGUF`, `LoadSafeTensors`)
+  - Namespace-clean: `loader.LoadGGUF(path, backend)` at module root
+- `nn.SetSeed(seed)` / `nn.ResetSeed()` for reproducible weight initialization
+  - Seeds both nn (Xavier, Embedding) and tensor (Randn, Rand) random sources
+  - Thread-safe (sync.Mutex per package)
+  - Enables deterministic model creation for experiments and testing
+  - Public API: `nn.SetSeed(42)` before `nn.NewLinear(...)` guarantees identical weights
+- `Clamp` element-wise tensor operation ([#61](https://github.com/born-ml/born/pull/61) by [@bennibbelink](https://github.com/bennibbelink))
+  - Restricts values to `[min, max]` range
+  - CPU: `int32`, `int64`, `float32`, `float64`
+  - WebGPU: `float32`, `int32` (dedicated WGSL `clamp()` shader)
+  - Autodiff backward: gradient masked by `min <= x <= max`
+  - Panics on NaN bounds (float types)
+  - `minBound > maxBound` → all values set to `maxBound` (matches PyTorch)
+- `internal/loader`: `GGMLMapper` — maps GGUF-native (`blk.{i}.*`) tensor names to Born standard names
+  - `DetectNaming` identifies HuggingFace vs GGML weight naming conventions automatically
+  - `GetMapperForNaming` selects the correct mapper from a weight name sample
+
+### Fixed
+
+- **RoPE**: Fixed rotate-half convention (was interleaved, caused incorrect positional encoding for LLaMA)
+  - Interleaved: `[-x1, x0, -x3, x2, ...]` — wrong for LLaMA/HuggingFace models
+  - Rotate-half: `[-xn, x0, ..., -x2n, xn+1, ...]` — correct convention now implemented
+- **GGUF Q4_K / Q5_K**: Correct scale unpacking algorithm
+  - `sc[0..7]` extracted from low 6 bits of scale bytes (was reading wrong bit positions)
+  - `m[0..7]` (minimum values) correctly assembled from high 2 bits + low nibble pattern
+- **GGUF Float16**: Correct subnormal handling in `Float16ToFloat32`
+  - Subnormals (`exp==0, mantissa!=0`) now expand correctly to `(-1)^sign * 2^-14 * mantissa/1024`
+  - Previously treated subnormals as zero, silently corrupting F16 model weights
+- **GGUF loader**: GGML tensor naming support (`blk.{i}.*` format)
+  - Files produced by llama.cpp use GGML names; Born previously only handled HuggingFace names
+  - Weight routing now correctly maps `blk.0.attn_q.weight → layers.0.attn.q.weight`
+- **LLaMA loader**: Tied embeddings — `lm_head.weight` is now copied from `embedding.weight`
+  when absent in the GGUF file (standard for TinyLlama, LLaMA-2, etc.)
+
+### Changed
+
+- **WebGPU SiLU**: SiLU activation shader connected to backend (`ops.go` now exposes `SiLU` method)
+  - Previously the WGSL shader existed but was unreachable; now fully wired
+- **gogpu/wgpu**: upgraded v0.26.8 → v0.27.5
+
+## [0.8.0] - 2026-04-26
+
+### Changed
+
+- **WebGPU backend migrated from go-webgpu to gogpu/wgpu** ([#40](https://github.com/born-ml/born/issues/40))
+  - Replaced `github.com/go-webgpu/webgpu` with `github.com/gogpu/wgpu` v0.26.8 (pure Go, zero CGO)
+  - **No more shared library dependency** — no `.dll`/`.so`/`.dylib` downloads needed
+  - True single binary deployment: `go build` produces executable with GPU support built in
+  - Vulkan primary compute backend — stable across all platforms and GPU vendors
+  - WGSL shaders unchanged — full backward compatibility
+  - Fixed: PipelineLayout kept alive for Vulkan SetBindGroup (was freed prematurely)
+  - Fixed: lazy ops immediate submit (prevents buffer lifetime issues with DestroyQueue)
+  - Fixed: lazy chain `copyGPUBuffer` immediate submit (prevents stale data in chained ops)
+  - Fixed: `runtime.KeepAlive` guards prevent GC finalizer races on GPU buffers
+  - Fixed: `Poll(PollWait)` in Release() ensures GPU idle before resource destruction
+  - All 105 GPU tests pass, validated with real model training (HRM, 20 epochs, 0 crashes)
+
+### Added
+
+- `Sign` and `Abs` element-wise tensor operations — full vertical slice ([#59](https://github.com/born-ml/born/pull/59) by [@bennibbelink](https://github.com/bennibbelink))
+  - `Backend.Sign` / `Backend.Abs` interface methods
+  - CPU implementation with per-type helpers: `uint8`, `int32`, `int64`, `float32`, `float64`
+  - Integer `Abs` uses two's-complement wraparound semantics (`abs(MinInt) == MinInt`), matching Burn / NumPy / PyTorch
+  - WebGPU implementation (float32 only, with dtype guards)
+  - Autodiff support: `SignOp` (zero gradient) and `AbsOp` (grad × sign)
+  - Mock backend, public `Tensor.Sign()` / `Tensor.Abs()` API
+  - Comprehensive tests including NaN, ±Inf, `MinInt`/`MaxInt` edge cases
+
+## [0.7.16] - 2026-04-10
+
+### 🎉 Community Contributions — @gmohmad & @bennibbelink
+
+Third external contributor [@gmohmad](https://github.com/gmohmad) with 5 PRs! Plus continued work from [@bennibbelink](https://github.com/bennibbelink).
+
+**Added**:
+- ONNX `LayerNormalization` operator with new `normalization_ops.go` category ([#47](https://github.com/born-ml/born/pull/47) by @gmohmad)
+- `BroadcastShapesMatMul` — NumPy-style broadcasting for batched matrix multiplication ([#49](https://github.com/born-ml/born/pull/49) by @gmohmad)
+- `BatchMatMul` now supports 2D×3D, singleton batch dims, multi-dim broadcasting
+- ONNX `MatMul` auto-delegates to `BatchMatMul` for >2D inputs
+- `tensor.BroadcastShapesMatMul` public API
+- ONNX `AttributeProto` tensor attribute (field 5) parsing ([#53](https://github.com/born-ml/born/pull/53) by @gmohmad)
+
+**Fixed**:
+- `Squeeze` scalar handling: returns `Shape{}` (scalar) instead of `Shape{1}` (1D) ([#50](https://github.com/born-ml/born/pull/50) by @gmohmad)
+- ONNX `AttributeProto` parser: correct protobuf field numbers, non-packed encoding support ([#53](https://github.com/born-ml/born/pull/53) by @gmohmad)
+- CPU backend: prevent inplace mutation when operands alias — `Mul(x,x)` no longer corrupts input ([#55](https://github.com/born-ml/born/pull/55), fixes [#45](https://github.com/born-ml/born/issues/45), reported by @gmohmad)
+- CI: added `test` gate job for branch protection required check ([#52](https://github.com/born-ml/born/pull/52))
+
+**Refactored**:
+- `ConvDims` and `PoolDims` parameter structs to reduce argument counts in conv2d/maxpool2d ([#46](https://github.com/born-ml/born/pull/46) by @bennibbelink)
+- Moved `ConvDims`/`PoolDims` to `internal/tensor/` shared package, eliminating autodiff→cpu cross-dependency (fixes [#48](https://github.com/born-ml/born/issues/48))
+- Extracted 14 helper functions from conv2d/maxpool2d inner loops (fixes [#17](https://github.com/born-ml/born/issues/17)) — compiler-inlined, Conv2D batch path ~28% faster
+
+**Added** (PR #56 by @gmohmad):
+- ONNX comparison operators: Greater, GreaterOrEqual, Less, LessOrEqual
+- ONNX logical operators: Not, And, Or, Xor (new `logical_ops.go`)
+- ONNX Erf operator
+- Broadcasting for boolean ops (Or, And) and all comparison ops in CPU backend
+
+**Fixed** (PR #56 by @gmohmad):
+- Updated `onnx/onnx.go` doc comment to match all registered operators (fixes [#43](https://github.com/born-ml/born/issues/43))
+
+**ONNX operators**: 39 → 49
+
+---
+
+## [0.7.15] - 2026-04-07
+
+### 🎉 Community Contribution — Erf Operator
+
+Second external contribution! Thanks to [@bennibbelink](https://github.com/bennibbelink).
+
+**Added**:
+- `Erf` (error function) operator — full vertical slice across the entire stack
+- Backend interface: `Erf(x *RawTensor) *RawTensor`
+- CPU backend: `math.Erf` for float32/float64
+- WebGPU backend: Abramowitz & Stegun polynomial approximation shader
+- Autodiff: backward pass with correct derivative `2/√π · exp(-x²)`
+- Mock backend, Tensor API (`tensor.Erf()`)
+- Comprehensive tests: forward + backward, float32/float64, edge cases (Inf, NaN)
+
+**Links**:
+- PR: [#37](https://github.com/born-ml/born/pull/37) by @bennibbelink
+
+---
+
+## [0.7.14] - 2026-03-04
+
+### 🎉 Community Contribution — ONNX Equal Operator
+
+First external contribution! Thanks to [@jsully1720](https://github.com/jsully1720).
+
+**Added**:
+- ONNX `Equal` operator — binary element-wise comparison returning bool tensor
+- New `comparison_ops.go` category for ONNX comparison operators
+- `registerComparisonOps()` wired into operator registry
+
+**ONNX operators**: 38 → 39
+
+**Links**:
+- PR: [#34](https://github.com/born-ml/born/pull/34) by @jsully1720
+- Issue: [#35](https://github.com/born-ml/born/issues/35)
+
+---
+
+## [0.7.13] - 2026-03-02
+
+### 🔧 Dependencies Update
+
+Update WebGPU backend to v0.4.1 with critical ABI compliance fixes.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.4.0 → **v0.4.1**
+- `go-webgpu/goffi` v0.4.0 → **v0.4.1** (indirect)
+
+**Upstream Bug Fixes (ABI compliance)**:
+- Float32 encoding: correct XMM bit patterns via `math.Float32bits`
+- AMD64 Unix stack: arguments beyond 6 GP registers properly pushed to stack
+- ARM64 Unix stack: arguments beyond 8 GP registers correctly spilled to stack
+- AMD64 struct returns (9-16 bytes): RAX+RDX register pair properly assembled
+- AMD64 sret pointer: structs > 16 bytes use caller buffer as first argument (RDI)
+- ARM64 HFA spilling: Homogeneous Floating-Point Aggregate overflow follows AAPCS64
+
+**Upstream Enhancements**:
+- `runtime.KeepAlive` prevents GC of argument pointers during FFI calls
+- `ErrTooManyArguments` overflow detection for calls exceeding 15 arguments
+
+**Impact**: Critical ABI correctness fixes for multi-platform GPU backend reliability.
+
+**Links**:
+- Upstream release: [go-webgpu v0.4.1](https://github.com/go-webgpu/webgpu/releases/tag/v0.4.1)
+
+---
+
+## [0.7.12] - 2026-02-27
+
+### 🔧 Dependencies Update
+
+Update WebGPU backend to v0.4.0 with FFI hardening and improved library loading.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.3.2 → **v0.4.0**
+
+**Upstream Improvements**:
+- Null handle guards on 27 public FFI methods — prevents SIGSEGV on nil/released objects
+- `ptrFromUintptr` helper — eliminates all `go vet` unsafe.Pointer warnings
+- `WGPU_NATIVE_PATH` env var for custom wgpu-native library path
+- `loadLibrary` returns `(Library, error)` with proper error propagation
+- Windows DLL eager loading — errors surface at init, not at first use
+- Enhanced `Init()` error messages with library path and remediation suggestions
+- 85 new null guard test cases
+
+**Impact**: Significantly improved safety and debuggability of GPU backend initialization.
+
+**Links**:
+- Upstream release: [go-webgpu v0.4.0](https://github.com/go-webgpu/webgpu/releases/tag/v0.4.0)
+
+---
+
+## [0.7.11] - 2026-02-27
+
+### 🔧 Dependencies Update
+
+Update WebGPU backend to v0.3.2 with crosscall2 callback integration.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.3.1 → **v0.3.2**
+- `go-webgpu/goffi` v0.3.9 → **v0.4.0** (indirect)
+
+**Upstream Improvements**:
+- crosscall2 integration — callbacks now work from C-library-created threads (Metal, wgpu-native)
+- fakecgo trampoline register fixes synced with purego v0.10.0
+
+**Impact**: Improved callback reliability on macOS Metal and native WebGPU implementations.
+
+**Links**:
+- Upstream release: [go-webgpu v0.3.2](https://github.com/go-webgpu/webgpu/releases/tag/v0.3.2)
+
+---
+
 ## [0.7.10] - 2026-02-18
 
 ### 🔧 Dependencies Update
@@ -18,6 +361,10 @@ Update WebGPU backend to v0.3.1 with critical ARM64 callback fix.
 **Upstream Fixes**:
 - ARM64 callback trampoline rewrite — fixes LR corruption for callbacks at index > 0
 - Symbol rename to prevent linker collision with purego
+
+**Code Quality**:
+- Removed 101 unused `//nolint:gosec` directives (gosec linter updated, no longer flags these)
+- Standardized remaining nolint comments to short format
 
 **Impact**: Critical fix for macOS Apple Silicon and Linux ARM64 users.
 
@@ -1128,6 +1475,14 @@ N/A (initial release)
 
 ---
 
+[0.7.10]: https://github.com/born-ml/born/releases/tag/v0.7.10
+[0.7.9]: https://github.com/born-ml/born/releases/tag/v0.7.9
+[0.7.8]: https://github.com/born-ml/born/releases/tag/v0.7.8
+[0.7.15]: https://github.com/born-ml/born/releases/tag/v0.7.15
+[0.7.14]: https://github.com/born-ml/born/releases/tag/v0.7.14
+[0.7.13]: https://github.com/born-ml/born/releases/tag/v0.7.13
+[0.7.12]: https://github.com/born-ml/born/releases/tag/v0.7.12
+[0.7.11]: https://github.com/born-ml/born/releases/tag/v0.7.11
 [0.7.10]: https://github.com/born-ml/born/releases/tag/v0.7.10
 [0.7.9]: https://github.com/born-ml/born/releases/tag/v0.7.9
 [0.7.8]: https://github.com/born-ml/born/releases/tag/v0.7.8

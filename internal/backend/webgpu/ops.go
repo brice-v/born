@@ -1,6 +1,8 @@
 package webgpu
 
 import (
+	"fmt"
+
 	"github.com/born-ml/born/internal/tensor"
 )
 
@@ -273,6 +275,15 @@ func (b *Backend) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
 	return result
 }
 
+// SiLU applies SiLU (Swish) activation: x * sigmoid(x).
+func (b *Backend) SiLU(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runUnaryOp(x, "silu", siluShader)
+	if err != nil {
+		panic("webgpu: SiLU: " + err.Error())
+	}
+	return result
+}
+
 // Exp computes element-wise exponential on GPU.
 func (b *Backend) Exp(x *tensor.RawTensor) *tensor.RawTensor {
 	var result *tensor.RawTensor
@@ -344,6 +355,81 @@ func (b *Backend) Sin(x *tensor.RawTensor) *tensor.RawTensor {
 	}
 	if err != nil {
 		panic("webgpu: Sin: " + err.Error())
+	}
+	return result
+}
+
+// Sign computes element-wise sign function on GPU.
+//
+// Only supports float32 dtype for now. Will raise a panic if called with unsupported dtype.
+func (b *Backend) Sign(x *tensor.RawTensor) *tensor.RawTensor {
+	if x.DType() != tensor.Float32 {
+		panic(fmt.Sprintf("webgpu: Sign currently supports only Float32, got %s", x.DType()))
+	}
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "sign", signShader)
+	} else {
+		result, err = b.runUnaryOp(x, "sign", signShader)
+	}
+	if err != nil {
+		panic("webgpu: Sign: " + err.Error())
+	}
+	return result
+}
+
+// Abs computes element-wise absolute value on GPU.
+//
+// Only supports float32 dtype for now. Will raise a panic if called with unsupported dtype.
+func (b *Backend) Abs(x *tensor.RawTensor) *tensor.RawTensor {
+	if x.DType() != tensor.Float32 {
+		panic(fmt.Sprintf("webgpu: Abs currently supports only Float32, got %s", x.DType()))
+	}
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "abs", absShader)
+	} else {
+		result, err = b.runUnaryOp(x, "abs", absShader)
+	}
+	if err != nil {
+		panic("webgpu: Abs: " + err.Error())
+	}
+	return result
+}
+
+// Clamp restricts tensor values element-wise to [minBound, maxBound].
+//
+// Supports float32 and int32 dtypes. Will raise a panic if called with unsupported dtype.
+func (b *Backend) Clamp(x *tensor.RawTensor, minBound, maxBound any) *tensor.RawTensor {
+	if x.DType() != tensor.Float32 && x.DType() != tensor.Int32 {
+		panic(fmt.Sprintf("webgpu: Clamp currently supports only Float32 and Int32, got %s", x.DType()))
+	}
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runClampLazy(x, minBound, maxBound)
+	} else {
+		result, err = b.runClamp(x, minBound, maxBound)
+	}
+	if err != nil {
+		panic("webgpu: Clamp: " + err.Error())
+	}
+	return result
+}
+
+// Erf computes element-wise error function on GPU.
+func (b *Backend) Erf(x *tensor.RawTensor) *tensor.RawTensor {
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "erf", erfShader)
+	} else {
+		result, err = b.runUnaryOp(x, "erf", erfShader)
+	}
+	if err != nil {
+		panic("webgpu: Erf: " + err.Error())
 	}
 	return result
 }
@@ -614,6 +700,115 @@ func (b *Backend) Unsqueeze(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 	return b.Reshape(x, newShape)
 }
 
+// SelectAdd performs a scatter-add along the specified dimension.
+//
+// Used primarily in Embedding backward to accumulate gradient rows into the weight
+// gradient tensor. In LazyMode, dispatches a GPU compute shader that keeps the
+// result on GPU without requiring f32 atomics (per-destination-row approach).
+// Falls back to CPU for non-lazy mode.
+func (b *Backend) SelectAdd(dest *tensor.RawTensor, dim int, indices, src *tensor.RawTensor) *tensor.RawTensor {
+	if indices.DType() != tensor.Int32 {
+		panic("webgpu: SelectAdd: indices must be int32")
+	}
+
+	destShape := dest.Shape()
+	srcShape := src.Shape()
+	ndim := len(destShape)
+
+	if dim < 0 {
+		dim += ndim
+	}
+	if dim < 0 || dim >= ndim {
+		panic(fmt.Sprintf("webgpu: SelectAdd: dim %d out of range for %dD tensor", dim, ndim))
+	}
+
+	numIndices := indices.Shape()[0]
+
+	if len(srcShape) != ndim {
+		panic(fmt.Sprintf("webgpu: SelectAdd: src rank %d != dest rank %d", len(srcShape), ndim))
+	}
+	if srcShape[dim] != numIndices {
+		panic(fmt.Sprintf("webgpu: SelectAdd: src dim %d (%d) != len(indices) (%d)", dim, srcShape[dim], numIndices))
+	}
+
+	// GPU path: selectAddShader handles dim=1 with 2-D tensors [numRows, innerSize].
+	// For the common Embedding backward case this is always 2-D with dim=0.
+	if b.LazyMode && ndim == 2 && dim == 0 && dest.DType() == tensor.Float32 {
+		result, err := b.runSelectAddLazy(dest, indices, src)
+		if err != nil {
+			panic("webgpu: SelectAdd: " + err.Error())
+		}
+		return result
+	}
+
+	// CPU fallback for non-lazy mode or unsupported shapes/dtypes.
+	return b.selectAddCPU(dest, dim, indices, src, destShape, srcShape, numIndices)
+}
+
+// selectAddCPU is the CPU fallback for SelectAdd.
+func (b *Backend) selectAddCPU(
+	dest *tensor.RawTensor, dim int, indices, src *tensor.RawTensor,
+	destShape, srcShape tensor.Shape, numIndices int,
+) *tensor.RawTensor {
+	result, err := tensor.NewRaw(destShape, dest.DType(), tensor.WebGPU)
+	if err != nil {
+		panic("webgpu: SelectAdd: " + err.Error())
+	}
+	copy(result.Data(), dest.Data())
+
+	idxData := indices.AsInt32()
+	dstStrides := destShape.ComputeStrides()
+	srcStrides := srcShape.ComputeStrides()
+	innerSize := srcShape.NumElements() / srcShape[dim]
+	srcDimStride := srcStrides[dim]
+	dstDimStride := dstStrides[dim]
+
+	switch dest.DType() {
+	case tensor.Float32:
+		dst := result.AsFloat32()
+		srcData := src.AsFloat32()
+		for i := 0; i < numIndices; i++ {
+			idx := int(idxData[i])
+			if idx < 0 || idx >= destShape[dim] {
+				panic(fmt.Sprintf("webgpu: SelectAdd: index %d out of bounds [0, %d)", idx, destShape[dim]))
+			}
+			for j := 0; j < innerSize; j++ {
+				nonDimFlat := webgpuSelectAddNonDimFlat(j, srcShape, dstStrides, dim)
+				dst[idx*dstDimStride+nonDimFlat] += srcData[i*srcDimStride+nonDimFlat]
+			}
+		}
+	default:
+		panic(fmt.Sprintf("webgpu: SelectAdd: unsupported dtype %s", dest.DType()))
+	}
+
+	return result
+}
+
+// webgpuSelectAddNonDimFlat computes the flat-index contribution from dimensions
+// other than dim, given a linear index j enumerating elements in those dimensions.
+// Uses srcShape for coordinate decomposition and dstStrides for flat-index mapping
+// (they are identical for non-scatter dims by the SelectAdd precondition).
+func webgpuSelectAddNonDimFlat(j int, srcShape tensor.Shape, dstStrides []int, dim int) int {
+	ndim := len(srcShape)
+	flat := 0
+	rem := j
+	for d := 0; d < ndim; d++ {
+		if d == dim {
+			continue
+		}
+		nonDimStride := 1
+		for dd := d + 1; dd < ndim; dd++ {
+			if dd != dim {
+				nonDimStride *= srcShape[dd]
+			}
+		}
+		coord := rem / nonDimStride
+		rem %= nonDimStride
+		flat += coord * dstStrides[d]
+	}
+	return flat
+}
+
 // Squeeze removes a dimension of size 1 at the specified position.
 func (b *Backend) Squeeze(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 	shape := x.Shape()
@@ -639,4 +834,129 @@ func (b *Backend) Squeeze(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 	}
 
 	return b.Reshape(x, newShape)
+}
+
+// ScatterAdd performs a general scatter-add matching Gather backward semantics.
+//
+// For each element in src (same shape as indices), accumulates into result along dim
+// at the position given by the corresponding index value. Follows Burn's float_scatter_add.
+//
+// In LazyMode, dispatches a GPU compute shader that keeps the result on GPU using a
+// per-destination-element approach (no f32 atomics required). Falls back to CPU for
+// non-lazy mode.
+//
+// Returns a new tensor with the same shape as dest. dest is not modified.
+func (b *Backend) ScatterAdd(dest *tensor.RawTensor, dim int, indices, src *tensor.RawTensor) *tensor.RawTensor {
+	dim = webgpuValidateScatterAdd(dest, dim, indices, src)
+
+	// GPU path in LazyMode: scatterAddShader handles arbitrary N-D tensors (up to 6D).
+	if b.LazyMode && dest.DType() == tensor.Float32 {
+		result, err := b.runScatterAddLazy(dest, dim, indices, src)
+		if err != nil {
+			panic("webgpu: ScatterAdd: " + err.Error())
+		}
+		return result
+	}
+
+	// CPU fallback for non-lazy mode or unsupported dtypes.
+	return b.scatterAddCPU(dest, dim, indices, src)
+}
+
+// scatterAddCPU is the CPU fallback for ScatterAdd.
+func (b *Backend) scatterAddCPU(dest *tensor.RawTensor, dim int, indices, src *tensor.RawTensor) *tensor.RawTensor {
+	destShape := dest.Shape()
+	srcShape := src.Shape()
+	indexShape := indices.Shape()
+
+	result, err := tensor.NewRaw(destShape, dest.DType(), tensor.WebGPU)
+	if err != nil {
+		panic("webgpu: ScatterAdd: " + err.Error())
+	}
+	copy(result.Data(), dest.Data())
+
+	idxData := indices.AsInt32()
+	numElements := src.NumElements()
+	ndim := len(destShape)
+	srcStrides := srcShape.ComputeStrides()
+	dstStrides := destShape.ComputeStrides()
+	indexStrides := indexShape.ComputeStrides()
+
+	switch dest.DType() {
+	case tensor.Float32:
+		webgpuScatterAddFloat32(result.AsFloat32(), src.AsFloat32(), idxData,
+			dim, numElements, ndim, destShape, srcStrides, dstStrides, indexStrides)
+	default:
+		panic(fmt.Sprintf("webgpu: ScatterAdd: unsupported dtype %s", dest.DType()))
+	}
+
+	return result
+}
+
+// webgpuValidateScatterAdd checks all preconditions and returns the normalized dim.
+func webgpuValidateScatterAdd(dest *tensor.RawTensor, dim int, indices, src *tensor.RawTensor) int {
+	if indices.DType() != tensor.Int32 {
+		panic("webgpu: ScatterAdd: indices must be int32")
+	}
+
+	destShape := dest.Shape()
+	srcShape := src.Shape()
+	indexShape := indices.Shape()
+	ndim := len(destShape)
+
+	if dim < 0 {
+		dim += ndim
+	}
+	if dim < 0 || dim >= ndim {
+		panic(fmt.Sprintf("webgpu: ScatterAdd: dim %d out of range for %dD tensor", dim, ndim))
+	}
+	if len(indexShape) != len(srcShape) {
+		panic(fmt.Sprintf("webgpu: ScatterAdd: indices rank %d != src rank %d", len(indexShape), len(srcShape)))
+	}
+	for d := range indexShape {
+		if indexShape[d] != srcShape[d] {
+			panic(fmt.Sprintf("webgpu: ScatterAdd: indices shape %v != src shape %v", indexShape, srcShape))
+		}
+	}
+	if len(srcShape) != ndim {
+		panic(fmt.Sprintf("webgpu: ScatterAdd: src rank %d != dest rank %d", len(srcShape), ndim))
+	}
+	for d := 0; d < ndim; d++ {
+		if d == dim {
+			continue
+		}
+		if srcShape[d] != destShape[d] {
+			panic(fmt.Sprintf("webgpu: ScatterAdd: shape mismatch at dim %d: dest=%d src=%d", d, destShape[d], srcShape[d]))
+		}
+	}
+	return dim
+}
+
+// webgpuScatterAddFloat32 performs the CPU-fallback scatter-add loop for float32.
+func webgpuScatterAddFloat32(dst, srcData []float32, idxData []int32, dim, numElements, ndim int,
+	destShape tensor.Shape, srcStrides, dstStrides, indexStrides []int) {
+	for i := 0; i < numElements; i++ {
+		rem := i
+		coords := make([]int, ndim)
+		for d := 0; d < ndim; d++ {
+			coords[d] = rem / srcStrides[d]
+			rem %= srcStrides[d]
+		}
+		indexIdx := 0
+		for d := 0; d < ndim; d++ {
+			indexIdx += coords[d] * indexStrides[d]
+		}
+		idx := int(idxData[indexIdx])
+		if idx < 0 || idx >= destShape[dim] {
+			panic(fmt.Sprintf("webgpu: ScatterAdd: index %d out of bounds [0, %d)", idx, destShape[dim]))
+		}
+		dstIdx := 0
+		for d := 0; d < ndim; d++ {
+			if d == dim {
+				dstIdx += idx * dstStrides[d]
+			} else {
+				dstIdx += coords[d] * dstStrides[d]
+			}
+		}
+		dst[dstIdx] += srcData[i]
+	}
 }

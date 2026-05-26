@@ -31,6 +31,43 @@ func BindGroupEntry(binding uint32, buffer *wgpu.Buffer, offset uint64, size uin
 	return wgpu.BindGroupEntry{Binding: binding, Buffer: buffer, Offset: offset, Size: size}
 }
 
+// pendingSubmission holds a finished command buffer that has not yet been
+// submitted to the GPU queue, plus the intermediate result buffers that must
+// remain alive until after queue.Submit returns.
+type pendingSubmission struct {
+	cmdBuffer  *wgpu.CommandBuffer
+	resultBufs []*wgpu.Buffer
+	bindGroups []*wgpu.BindGroup
+}
+
+// encoderBatch accumulates multiple compute passes into a single CommandEncoder.
+type encoderBatch struct {
+	encoder    *wgpu.CommandEncoder
+	copies     []bufferCopyEntry
+	resultBufs []*wgpu.Buffer
+	bindGroups []*wgpu.BindGroup
+	count      int
+}
+
+// bufferCopyEntry records a single CopyBufferToBuffer to be appended to the
+// active encoder immediately before Finish().
+type bufferCopyEntry struct {
+	src, dst *wgpu.Buffer
+	size     uint64
+}
+
+// cachedBuffer holds a GPU storage buffer created from a CPU RawTensor.
+type cachedBuffer struct {
+	buffer *wgpu.Buffer
+	size   uint64
+}
+
+// inputBufferCache caches GPU storage buffers keyed by *RawTensor pointer.
+type inputBufferCache struct {
+	mu    sync.RWMutex
+	cache map[*tensor.RawTensor]*cachedBuffer
+}
+
 // Backend implements tensor operations on GPU using WebGPU.
 type Backend struct {
 	instance *wgpu.Instance
@@ -67,7 +104,15 @@ type Backend struct {
 	// Commands are accumulated and submitted together to reduce GPU sync overhead.
 	pendingCommands []*wgpu.CommandBuffer
 	pendingMu       sync.Mutex
-	maxBatchSize    int // Maximum commands before auto-flush (0 = no limit)
+
+	// Pending submissions from encoder batch (shared encoder path).
+	pending     []pendingSubmission
+	activeBatch encoderBatch
+
+	// Input buffer cache for CPU tensor GPU upload reuse.
+	inputBufferCache inputBufferCache
+
+	maxBatchSize int // Maximum commands before auto-flush (0 = no limit)
 }
 
 // New creates a new WebGPU backend.
@@ -162,11 +207,30 @@ func (b *Backend) flushCommands() {
 
 // flushCommandsLocked submits all pending command buffers (must hold pendingMu lock).
 func (b *Backend) flushCommandsLocked() {
-	if len(b.pendingCommands) == 0 {
+	// First, finish any active encoder batch.
+	b.finishActiveBatchLocked()
+
+	// Collect all command buffers from both pending queues.
+	cmdBufs := b.pendingCommands
+	for _, ps := range b.pending {
+		cmdBufs = append(cmdBufs, ps.cmdBuffer)
+	}
+	if len(cmdBufs) == 0 {
 		return
 	}
-	b.queue.Submit(b.pendingCommands...)
+	b.queue.Submit(cmdBufs...)
+
+	// Release resources after submission.
+	for _, ps := range b.pending {
+		for _, buf := range ps.resultBufs {
+			buf.Release()
+		}
+		for _, bg := range ps.bindGroups {
+			bg.Release()
+		}
+	}
 	b.pendingCommands = b.pendingCommands[:0]
+	b.pending = b.pending[:0]
 }
 
 // FlushCommands submits all pending command buffers to the GPU queue.
@@ -211,6 +275,9 @@ func (b *Backend) Release() {
 		s.Release()
 	}
 	b.shaders = nil
+
+	// Release input buffer cache
+	b.clearInputBufferCache()
 
 	// Release WebGPU objects
 	if b.queue != nil {

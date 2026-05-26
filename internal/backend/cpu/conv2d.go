@@ -6,6 +6,9 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
+// ConvDims is tensor.ConvDims, defined in the shared tensor package.
+type ConvDims = tensor.ConvDims
+
 // Conv2D performs 2D convolution using im2col algorithm.
 //
 // Input shape: [batch, in_channels, height, width]
@@ -73,12 +76,19 @@ func (cpu *CPUBackend) Conv2D(input, kernel *tensor.RawTensor, stride, padding i
 		panic(fmt.Sprintf("conv2d: failed to create output tensor: %v", err))
 	}
 
+	convDims := &ConvDims{
+		N: N, CIn: CIn, H: H, W: W,
+		COut: COut, KH: KH, KW: KW,
+		HOut: HOut, WOut: WOut,
+		Stride: stride, Padding: padding,
+	}
+
 	// Dispatch to type-specific implementation
 	switch input.DType() {
 	case tensor.Float32:
-		conv2dFloat32(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding)
+		conv2dFloat32(output, input, kernel, convDims)
 	case tensor.Float64:
-		conv2dFloat64(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding)
+		conv2dFloat64(output, input, kernel, convDims)
 	default:
 		panic(fmt.Sprintf("conv2d: unsupported dtype %s", input.DType()))
 	}
@@ -95,64 +105,61 @@ func (cpu *CPUBackend) Conv2D(input, kernel *tensor.RawTensor, stride, padding i
 //  4. Reshape: [C_out, N*H_out*W_out] -> [N, C_out, H_out, W_out]
 //
 // Stride specialization: separate path for stride=1 enables compiler optimizations (SIMD).
-func conv2dFloat32(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding int) {
+func conv2dFloat32(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 	// Dispatch to specialized implementation for common case
-	if stride == 1 && padding == 0 {
-		conv2dFloat32Stride1NoPad(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut)
+	if dims.Stride == 1 && dims.Padding == 0 {
+		conv2dFloat32Stride1NoPad(output, input, kernel, dims)
 		return
 	}
 
 	// General case (stride > 1 or padding > 0)
-	conv2dFloat32General(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding)
+	conv2dFloat32General(output, input, kernel, dims)
 }
 
 // conv2dFloat32Stride1NoPad is optimized for stride=1, padding=0 (most common case).
 // Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
-func conv2dFloat32Stride1NoPad(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut int) {
+func conv2dFloat32Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 	inputData := input.AsFloat32()
 	kernelData := kernel.AsFloat32()
 	outputData := output.AsFloat32()
+
+	N := dims.N
+	CIn := dims.CIn
+	COut := dims.COut
+	KH := dims.KH
+	KW := dims.KW
+	HOut := dims.HOut
+	WOut := dims.WOut
 
 	// Step 1: Im2col with stride=1, padding=0
 	colWidth := CIn * KH * KW
 	colHeight := N * HOut * WOut
 	colBuf := make([]float32, colHeight*colWidth)
 
-	im2colFloat32Stride1NoPad(colBuf, inputData, N, CIn, H, W, KH, KW, HOut, WOut)
+	im2colFloat32Stride1NoPad(colBuf, inputData, dims)
 
-	// Step 2: Matrix multiplication
-	for i := 0; i < COut; i++ {
-		for j := 0; j < colHeight; j++ {
-			sum := float32(0.0)
-			for k := 0; k < colWidth; k++ {
-				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
-			}
-			outputData[i*colHeight+j] = sum
-		}
-	}
+	// Step 2: Matrix multiplication via helper (inlined by compiler).
+	matMulColBufFloat32(outputData, kernelData, colBuf, COut, colHeight, colWidth)
 
-	// Step 3: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out]
+	// Step 3: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
 	tempBuf := make([]float32, len(outputData))
 	copy(tempBuf, outputData)
-
-	for n := 0; n < N; n++ {
-		for c := 0; c < COut; c++ {
-			for h := 0; h < HOut; h++ {
-				for w := 0; w < WOut; w++ {
-					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
-					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
-					outputData[dstIdx] = tempBuf[srcIdx]
-				}
-			}
-		}
-	}
+	rearrangeOutputFloat32(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
 // conv2dFloat32General handles arbitrary stride and padding.
-func conv2dFloat32General(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding int) {
+func conv2dFloat32General(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 	inputData := input.AsFloat32()
 	kernelData := kernel.AsFloat32()
 	outputData := output.AsFloat32()
+
+	N := dims.N
+	CIn := dims.CIn
+	COut := dims.COut
+	KH := dims.KH
+	KW := dims.KW
+	HOut := dims.HOut
+	WOut := dims.WOut
 
 	// Step 1: Im2col transformation
 	// colBuf: [N * H_out * W_out, C_in * K_h * K_w]
@@ -160,62 +167,38 @@ func conv2dFloat32General(output, input, kernel *tensor.RawTensor, N, CIn, H, W,
 	colHeight := N * HOut * WOut
 	colBuf := make([]float32, colHeight*colWidth)
 
-	im2colFloat32(colBuf, inputData, N, CIn, H, W, KH, KW, HOut, WOut, stride, padding)
+	im2colFloat32(colBuf, inputData, dims)
 
-	// Step 2: Reshape kernel
-	// kernelData is already in [C_out, C_in * K_h * K_w] layout (row-major)
+	// Step 2: Reshape kernel — already in [C_out, C_in*K_h*K_w] layout (row-major).
 
-	// Step 3: Matrix multiplication
-	// kernel: [C_out, C_in * K_h * K_w]
-	// colBuf: [C_in * K_h * K_w, N * H_out * W_out] (transposed view)
-	// result: [C_out, N * H_out * W_out]
-	//
-	// We want: result[i, j] = sum_k kernel[i, k] * colBuf[j, k]
-	// But colBuf is in row-major as [N*H_out*W_out, C*K_h*K_w]
-	// So we compute: result[i, j] = sum_k kernel[i, k] * colBuf[j*colWidth + k]
+	// Step 3: Matrix multiplication via helper (inlined by compiler).
+	// kernel: [C_out, C_in*K_h*K_w] @ colBuf^T -> [C_out, N*H_out*W_out]
+	matMulColBufFloat32(outputData, kernelData, colBuf, COut, colHeight, colWidth)
 
-	for i := 0; i < COut; i++ {
-		for j := 0; j < colHeight; j++ {
-			sum := float32(0.0)
-			for k := 0; k < colWidth; k++ {
-				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
-			}
-			// Temporary storage in row-major: [C_out, N*H_out*W_out]
-			// We'll rearrange this into [N, C_out, H_out, W_out] next
-			outputData[i*colHeight+j] = sum
-		}
-	}
-
-	// Step 4: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out]
-	// Current layout: output[c, n*H_out*W_out + h*W_out + w]
-	// Desired layout: output[n, c, h, w] = output[n*C_out*H_out*W_out + c*H_out*W_out + h*W_out + w]
+	// Step 4: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
 	tempBuf := make([]float32, len(outputData))
 	copy(tempBuf, outputData)
-
-	for n := 0; n < N; n++ {
-		for c := 0; c < COut; c++ {
-			for h := 0; h < HOut; h++ {
-				for w := 0; w < WOut; w++ {
-					// Source index: [c, n*H_out*W_out + h*W_out + w]
-					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
-					// Dest index: [n, c, h, w]
-					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
-					outputData[dstIdx] = tempBuf[srcIdx]
-				}
-			}
-		}
-	}
+	rearrangeOutputFloat32(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
 // im2colFloat32Stride1NoPad is optimized for stride=1, padding=0.
 // Compiler can better optimize with hardcoded stride=1 (no bounds checks for padding).
-func im2colFloat32Stride1NoPad(colBuf, inputData []float32, N, C, H, W, KH, KW, HOut, WOut int) {
-	colWidth := C * KH * KW
+func im2colFloat32Stride1NoPad(colBuf, inputData []float32, dims *ConvDims) {
+	N := dims.N
+	CIn := dims.CIn
+	H := dims.H
+	W := dims.W
+	KH := dims.KH
+	KW := dims.KW
+	HOut := dims.HOut
+	WOut := dims.WOut
+
+	colWidth := CIn * KH * KW
 	colIdx := 0
 
 	for n := 0; n < N; n++ {
-		batchOffset := n * C * H * W
-		batchData := inputData[batchOffset : batchOffset+C*H*W]
+		batchOffset := n * CIn * H * W
+		batchData := inputData[batchOffset : batchOffset+CIn*H*W]
 
 		for outH := 0; outH < HOut; outH++ {
 			for outW := 0; outW < WOut; outW++ {
@@ -224,7 +207,7 @@ func im2colFloat32Stride1NoPad(colBuf, inputData []float32, N, C, H, W, KH, KW, 
 				rowData := colBuf[rowOffset : rowOffset+colWidth]
 
 				bufIdx := 0
-				for c := 0; c < C; c++ {
+				for c := 0; c < CIn; c++ {
 					channelOffset := c * H * W
 					channelData := batchData[channelOffset : channelOffset+H*W]
 
@@ -256,14 +239,25 @@ func im2colFloat32Stride1NoPad(colBuf, inputData []float32, N, C, H, W, KH, KW, 
 // For each output position (n, out_h, out_w):
 //   - Extract the patch from input
 //   - Flatten the patch into a row of colBuf
-func im2colFloat32(colBuf, inputData []float32, N, C, H, W, KH, KW, HOut, WOut, stride, padding int) {
-	colWidth := C * KH * KW
+func im2colFloat32(colBuf, inputData []float32, dims *ConvDims) {
+	N := dims.N
+	CIn := dims.CIn
+	H := dims.H
+	W := dims.W
+	KH := dims.KH
+	KW := dims.KW
+	HOut := dims.HOut
+	WOut := dims.WOut
+	stride := dims.Stride
+	padding := dims.Padding
+
+	colWidth := CIn * KH * KW
 	colIdx := 0 // Current row in colBuf
 
 	for n := 0; n < N; n++ {
 		// Pre-slice batch: eliminates n*C*H*W bounds check
-		batchOffset := n * C * H * W
-		batchData := inputData[batchOffset : batchOffset+C*H*W]
+		batchOffset := n * CIn * H * W
+		batchData := inputData[batchOffset : batchOffset+CIn*H*W]
 
 		for outH := 0; outH < HOut; outH++ {
 			for outW := 0; outW < WOut; outW++ {
@@ -277,7 +271,7 @@ func im2colFloat32(colBuf, inputData []float32, N, C, H, W, KH, KW, HOut, WOut, 
 				rowData := colBuf[rowOffset : rowOffset+colWidth]
 
 				bufIdx := 0
-				for c := 0; c < C; c++ {
+				for c := 0; c < CIn; c++ {
 					// Pre-slice channel: eliminates c*H*W bounds check
 					channelOffset := c * H * W
 					channelData := batchData[channelOffset : channelOffset+H*W]
@@ -308,105 +302,94 @@ func im2colFloat32(colBuf, inputData []float32, N, C, H, W, KH, KW, HOut, WOut, 
 
 // conv2dFloat64 performs Conv2D for float64 using im2col.
 // Stride specialization: separate path for stride=1 enables compiler optimizations (SIMD).
-func conv2dFloat64(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding int) {
+func conv2dFloat64(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 	// Dispatch to specialized implementation for common case
-	if stride == 1 && padding == 0 {
-		conv2dFloat64Stride1NoPad(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut)
+	if dims.Stride == 1 && dims.Padding == 0 {
+		conv2dFloat64Stride1NoPad(output, input, kernel, dims)
 		return
 	}
 
 	// General case (stride > 1 or padding > 0)
-	conv2dFloat64General(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding)
+	conv2dFloat64General(output, input, kernel, dims)
 }
 
 // conv2dFloat64Stride1NoPad is optimized for stride=1, padding=0 (most common case).
 // Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
-func conv2dFloat64Stride1NoPad(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut int) {
+func conv2dFloat64Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 	inputData := input.AsFloat64()
 	kernelData := kernel.AsFloat64()
 	outputData := output.AsFloat64()
+
+	N := dims.N
+	CIn := dims.CIn
+	COut := dims.COut
+	KH := dims.KH
+	KW := dims.KW
+	HOut := dims.HOut
+	WOut := dims.WOut
 
 	// Im2col with stride=1, padding=0
 	colWidth := CIn * KH * KW
 	colHeight := N * HOut * WOut
 	colBuf := make([]float64, colHeight*colWidth)
-	im2colFloat64Stride1NoPad(colBuf, inputData, N, CIn, H, W, KH, KW, HOut, WOut)
+	im2colFloat64Stride1NoPad(colBuf, inputData, dims)
 
-	// MatMul
-	for i := 0; i < COut; i++ {
-		for j := 0; j < colHeight; j++ {
-			sum := float64(0.0)
-			for k := 0; k < colWidth; k++ {
-				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
-			}
-			outputData[i*colHeight+j] = sum
-		}
-	}
+	// MatMul via helper (inlined by compiler).
+	matMulColBufFloat64(outputData, kernelData, colBuf, COut, colHeight, colWidth)
 
-	// Rearrange
+	// Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
 	tempBuf := make([]float64, len(outputData))
 	copy(tempBuf, outputData)
-	for n := 0; n < N; n++ {
-		for c := 0; c < COut; c++ {
-			for h := 0; h < HOut; h++ {
-				for w := 0; w < WOut; w++ {
-					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
-					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
-					outputData[dstIdx] = tempBuf[srcIdx]
-				}
-			}
-		}
-	}
+	rearrangeOutputFloat64(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
 // conv2dFloat64General handles arbitrary stride and padding.
-func conv2dFloat64General(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding int) {
+func conv2dFloat64General(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 	inputData := input.AsFloat64()
 	kernelData := kernel.AsFloat64()
 	outputData := output.AsFloat64()
+
+	N := dims.N
+	CIn := dims.CIn
+	COut := dims.COut
+	KH := dims.KH
+	KW := dims.KW
+	HOut := dims.HOut
+	WOut := dims.WOut
 
 	// Im2col
 	colWidth := CIn * KH * KW
 	colHeight := N * HOut * WOut
 	colBuf := make([]float64, colHeight*colWidth)
-	im2colFloat64(colBuf, inputData, N, CIn, H, W, KH, KW, HOut, WOut, stride, padding)
+	im2colFloat64(colBuf, inputData, dims)
 
-	// MatMul
-	for i := 0; i < COut; i++ {
-		for j := 0; j < colHeight; j++ {
-			sum := float64(0.0)
-			for k := 0; k < colWidth; k++ {
-				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
-			}
-			outputData[i*colHeight+j] = sum
-		}
-	}
+	// MatMul via helper (inlined by compiler).
+	matMulColBufFloat64(outputData, kernelData, colBuf, COut, colHeight, colWidth)
 
-	// Rearrange
+	// Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
 	tempBuf := make([]float64, len(outputData))
 	copy(tempBuf, outputData)
-	for n := 0; n < N; n++ {
-		for c := 0; c < COut; c++ {
-			for h := 0; h < HOut; h++ {
-				for w := 0; w < WOut; w++ {
-					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
-					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
-					outputData[dstIdx] = tempBuf[srcIdx]
-				}
-			}
-		}
-	}
+	rearrangeOutputFloat64(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
 // im2colFloat64Stride1NoPad is optimized for stride=1, padding=0.
 // Compiler can better optimize with hardcoded stride=1 (no bounds checks for padding).
-func im2colFloat64Stride1NoPad(colBuf, inputData []float64, N, C, H, W, KH, KW, HOut, WOut int) {
-	colWidth := C * KH * KW
+func im2colFloat64Stride1NoPad(colBuf, inputData []float64, dims *ConvDims) {
+	N := dims.N
+	CIn := dims.CIn
+	H := dims.H
+	W := dims.W
+	KH := dims.KH
+	KW := dims.KW
+	HOut := dims.HOut
+	WOut := dims.WOut
+
+	colWidth := CIn * KH * KW
 	colIdx := 0
 
 	for n := 0; n < N; n++ {
-		batchOffset := n * C * H * W
-		batchData := inputData[batchOffset : batchOffset+C*H*W]
+		batchOffset := n * CIn * H * W
+		batchData := inputData[batchOffset : batchOffset+CIn*H*W]
 
 		for outH := 0; outH < HOut; outH++ {
 			for outW := 0; outW < WOut; outW++ {
@@ -415,7 +398,7 @@ func im2colFloat64Stride1NoPad(colBuf, inputData []float64, N, C, H, W, KH, KW, 
 				rowData := colBuf[rowOffset : rowOffset+colWidth]
 
 				bufIdx := 0
-				for c := 0; c < C; c++ {
+				for c := 0; c < CIn; c++ {
 					channelOffset := c * H * W
 					channelData := batchData[channelOffset : channelOffset+H*W]
 
@@ -436,14 +419,25 @@ func im2colFloat64Stride1NoPad(colBuf, inputData []float64, N, C, H, W, KH, KW, 
 	}
 }
 
-func im2colFloat64(colBuf, inputData []float64, N, C, H, W, KH, KW, HOut, WOut, stride, padding int) {
-	colWidth := C * KH * KW
+func im2colFloat64(colBuf, inputData []float64, dims *ConvDims) {
+	N := dims.N
+	CIn := dims.CIn
+	H := dims.H
+	W := dims.W
+	KH := dims.KH
+	KW := dims.KW
+	HOut := dims.HOut
+	WOut := dims.WOut
+	stride := dims.Stride
+	padding := dims.Padding
+
+	colWidth := CIn * KH * KW
 	colIdx := 0
 
 	for n := 0; n < N; n++ {
-		// Pre-slice batch: eliminates n*C*H*W bounds check
-		batchOffset := n * C * H * W
-		batchData := inputData[batchOffset : batchOffset+C*H*W]
+		// Pre-slice batch: eliminates n*CIn*H*W bounds check
+		batchOffset := n * CIn * H * W
+		batchData := inputData[batchOffset : batchOffset+CIn*H*W]
 
 		for outH := 0; outH < HOut; outH++ {
 			for outW := 0; outW < WOut; outW++ {
@@ -455,7 +449,7 @@ func im2colFloat64(colBuf, inputData []float64, N, C, H, W, KH, KW, HOut, WOut, 
 				rowData := colBuf[rowOffset : rowOffset+colWidth]
 
 				bufIdx := 0
-				for c := 0; c < C; c++ {
+				for c := 0; c < CIn; c++ {
 					// Pre-slice channel: eliminates c*H*W bounds check
 					channelOffset := c * H * W
 					channelData := batchData[channelOffset : channelOffset+H*W]

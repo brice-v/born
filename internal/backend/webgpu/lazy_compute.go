@@ -125,6 +125,16 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 	return b.createLazyResult(bufferResult, resultSize, a.Shape(), a.DType())
 }
 
+// lazyResources holds GPU resources that must stay alive until queue.Submit completes.
+type lazyResources struct {
+	buffers    []*wgpu.Buffer
+	bindGroups []*wgpu.BindGroup
+}
+
+// maxPendingBeforeFlush limits how many command buffers accumulate before
+// auto-flushing. Prevents Windows TDR timeout on iGPUs.
+const maxPendingBeforeFlush = 128
+
 // copyGPUBuffer creates a GPU-to-GPU copy without CPU round-trip.
 // This is critical for LazyMode performance - avoids GPU→CPU→GPU transfers.
 func (b *Backend) copyGPUBuffer(srcBuffer *wgpu.Buffer, size uint64) *wgpu.Buffer {
@@ -146,14 +156,10 @@ func (b *Backend) copyGPUBuffer(srcBuffer *wgpu.Buffer, size uint64) *wgpu.Buffe
 // createBufferFromTensor creates a GPU buffer from a RawTensor.
 // If the tensor already has GPU data (lazy), performs GPU→GPU copy (no CPU round-trip!).
 func (b *Backend) createBufferFromTensor(t *tensor.RawTensor) *wgpu.Buffer {
-	// Check if tensor already has GPU data
 	if gpuData := t.GPUData(); gpuData != nil && !gpuData.IsRealized() {
-		// Tensor has unrealized GPU data - use GPU→GPU copy
 		existingBuffer := (*wgpu.Buffer)(gpuData.BufferPtr())
 		return b.copyGPUBuffer(existingBuffer, gpuData.Size())
 	}
-
-	// CPU tensor - upload data to GPU
 	return b.createBuffer(t.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
 }
 
@@ -1299,4 +1305,261 @@ func (b *Backend) runSumLazy(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	default:
 		return nil, errUnsupportedDType(dtype)
 	}
+}
+
+// putInt32LE writes an int32 to a byte slice in little-endian order.
+func putInt32LE(b []byte, v int32) {
+	putUint32LE(b, uint32(v)) //nolint:gosec // G115: safe, int32 fits in uint32
+}
+
+// runClampLazy restricts tensor values element-wise to [minBound, maxBound] with lazy result.
+func (b *Backend) runClampLazy(input *tensor.RawTensor, minBound, maxBound any) (*tensor.RawTensor, error) {
+	dtype := input.DType()
+	if dtype != tensor.Float32 && dtype != tensor.Int32 {
+		return nil, errUnsupportedDType(dtype)
+	}
+
+	numElements := input.NumElements()
+
+	shaderName, shaderCode := selectBinaryShader(dtype, "clamp", clampShader, clampShaderInt32)
+
+	shader := b.compileShader(shaderName, shaderCode)
+	pipeline := b.getOrCreatePipeline(shaderName, shader)
+
+	bufferInput := b.createBufferFromTensor(input)
+	defer bufferInput.Release()
+
+	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Size:  resultSize,
+	})
+
+	params := make([]byte, 16)
+	putUint32LE(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
+
+	if dtype == tensor.Float32 {
+		putFloat32LE(params[4:8], minBound.(float32))
+		putFloat32LE(params[8:12], maxBound.(float32))
+	} else {
+		putInt32LE(params[4:8], minBound.(int32))
+		putInt32LE(params[8:12], maxBound.(int32))
+	}
+	bufferParams := b.createUniformBuffer(params)
+	defer bufferParams.Release()
+
+	bindGroupLayout := pipeline.GetBindGroupLayout(0)
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferInput, 0, resultSize),
+		BindGroupEntry(1, bufferResult, 0, resultSize),
+		BindGroupEntry(2, bufferParams, 0, 16),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
+	defer bindGroup.Release()
+
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
+	computePass := encoder.BeginComputePass(nil)
+	computePass.SetPipeline(pipeline)
+	computePass.SetBindGroup(0, bindGroup, nil)
+
+	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
+	computePass.DispatchWorkgroups(workgroups, 1, 1)
+	computePass.End()
+
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
+	b.queueCommand(cmdBuffer)
+
+	return b.createLazyResult(bufferResult, resultSize, input.Shape(), dtype)
+}
+
+// runSelectAddLazy executes SelectAdd on GPU using selectAddShader with a lazy result.
+// SelectAdd is the Embedding backward kernel: accumulate src rows into dest rows at
+// the positions given by 1-D integer indices.
+func (b *Backend) runSelectAddLazy(dest, indices, src *tensor.RawTensor) (*tensor.RawTensor, error) {
+	if dest.DType() != tensor.Float32 {
+		return nil, &lazyError{msg: "selectAdd: dest must be float32"}
+	}
+	if indices.DType() != tensor.Int32 {
+		return nil, &lazyError{msg: "selectAdd: indices must be int32"}
+	}
+	if src.DType() != tensor.Float32 {
+		return nil, &lazyError{msg: "selectAdd: src must be float32"}
+	}
+
+	destShape := dest.Shape()
+	numRows := uint32(destShape[0])      //nolint:gosec // G115: safe, tensor dims are small positive ints
+	numIndices := uint32(src.Shape()[0]) //nolint:gosec // G115: safe
+	innerSize := uint32(destShape[1])    //nolint:gosec // G115: safe
+
+	shader := b.compileShader("selectAdd", selectAddShader)
+	pipeline := b.getOrCreatePipeline("selectAdd", shader)
+
+	bufferDest := b.createBufferFromTensor(dest)
+	defer bufferDest.Release()
+
+	bufferIndices := b.createBufferFromTensor(indices)
+	defer bufferIndices.Release()
+
+	bufferSrc := b.createBufferFromTensor(src)
+	defer bufferSrc.Release()
+
+	resultSize := uint64(dest.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Size:  resultSize,
+	})
+
+	params := make([]byte, 16)
+	putUint32LE(params[0:4], numRows)
+	putUint32LE(params[4:8], numIndices)
+	putUint32LE(params[8:12], innerSize)
+	bufferParams := b.createUniformBuffer(params)
+	defer bufferParams.Release()
+
+	bindGroupLayout := pipeline.GetBindGroupLayout(0)
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferDest, 0, resultSize),
+		BindGroupEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115
+		BindGroupEntry(2, bufferSrc, 0, uint64(src.ByteSize())),         //nolint:gosec // G115
+		BindGroupEntry(3, bufferResult, 0, resultSize),
+		BindGroupEntry(4, bufferParams, 0, 16),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
+	defer bindGroup.Release()
+
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
+	computePass := encoder.BeginComputePass(nil)
+	computePass.SetPipeline(pipeline)
+	computePass.SetBindGroup(0, bindGroup, nil)
+
+	workgroups := (numRows + workgroupSize - 1) / workgroupSize
+	computePass.DispatchWorkgroups(workgroups, 1, 1)
+	computePass.End()
+
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
+	b.queueCommand(cmdBuffer)
+
+	return b.createLazyResult(bufferResult, resultSize, dest.Shape(), tensor.Float32)
+}
+
+// runScatterAddLazy executes ScatterAdd on GPU using scatterAddShader with a lazy result.
+// ScatterAdd is the Gather backward kernel: for each element in src, accumulate into
+// dest at the position given by the N-D integer indices tensor along the scatter dimension.
+func (b *Backend) runScatterAddLazy(dest *tensor.RawTensor, dim int, indices, src *tensor.RawTensor) (*tensor.RawTensor, error) {
+	if dest.DType() != tensor.Float32 {
+		return nil, &lazyError{msg: "scatterAdd: dest must be float32"}
+	}
+	if indices.DType() != tensor.Int32 {
+		return nil, &lazyError{msg: "scatterAdd: indices must be int32"}
+	}
+	if src.DType() != tensor.Float32 {
+		return nil, &lazyError{msg: "scatterAdd: src must be float32"}
+	}
+
+	ndim := len(dest.Shape())
+	if ndim > 6 {
+		return nil, &lazyError{msg: "scatterAdd: at most 6 dims supported"}
+	}
+
+	numDestElements := uint32(dest.NumElements()) //nolint:gosec // G115
+	numSrcElements := uint32(src.NumElements())   //nolint:gosec // G115
+	scatterDim := uint32(dim)                     //nolint:gosec // G115
+
+	shader := b.compileShader("scatterAdd", scatterAddShader)
+	pipeline := b.getOrCreatePipeline("scatterAdd", shader)
+
+	bufferDest := b.createBufferFromTensor(dest)
+	defer bufferDest.Release()
+
+	bufferIndices := b.createBufferFromTensor(indices)
+	defer bufferIndices.Release()
+
+	bufferSrc := b.createBufferFromTensor(src)
+	defer bufferSrc.Release()
+
+	resultSize := uint64(dest.ByteSize()) //nolint:gosec // G115
+	bufferResult := CreateBuffer(b.device, &wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Size:  resultSize,
+	})
+
+	// Pack params: num_dest_elements, num_src_elements, scatter_dim, ndim,
+	// dest_shape[0..5], dest_strides[0..5], src_strides[0..5], pad0, pad1 = 96 bytes
+	params := make([]byte, 96)
+	putUint32LE(params[0:4], numDestElements)
+	putUint32LE(params[4:8], numSrcElements)
+	putUint32LE(params[8:12], scatterDim)
+	putUint32LE(params[12:16], uint32(ndim)) //nolint:gosec // G115
+
+	destShape := dest.Shape()
+	destStrides := dest.Strides()
+	srcStrides := src.Strides()
+
+	for i := 0; i < 6; i++ {
+		if i < ndim {
+			putUint32LE(params[16+i*4:20+i*4], uint32(destShape[i])) //nolint:gosec // G115
+		} else {
+			putUint32LE(params[16+i*4:20+i*4], 1)
+		}
+	}
+	for i := 0; i < 6; i++ {
+		if i < ndim {
+			putUint32LE(params[40+i*4:44+i*4], uint32(destStrides[i])) //nolint:gosec // G115
+		} else {
+			putUint32LE(params[40+i*4:44+i*4], 0)
+		}
+	}
+	for i := 0; i < 6; i++ {
+		if i < ndim {
+			putUint32LE(params[64+i*4:68+i*4], uint32(srcStrides[i])) //nolint:gosec // G115
+		} else {
+			putUint32LE(params[64+i*4:68+i*4], 0)
+		}
+	}
+
+	bufferParams := b.createUniformBuffer(params)
+	defer bufferParams.Release()
+
+	bindGroupLayout := pipeline.GetBindGroupLayout(0)
+	bindGroup, err := CreateBindGroupSimple(b.device, bindGroupLayout, []wgpu.BindGroupEntry{
+		BindGroupEntry(0, bufferDest, 0, resultSize),
+		BindGroupEntry(1, bufferIndices, 0, uint64(indices.ByteSize())), //nolint:gosec // G115
+		BindGroupEntry(2, bufferSrc, 0, uint64(src.ByteSize())),         //nolint:gosec // G115
+		BindGroupEntry(3, bufferResult, 0, resultSize),
+		BindGroupEntry(4, bufferParams, 0, 96),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBindGroupSimple: %w", err)
+	}
+	defer bindGroup.Release()
+
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	check("CreateCommandEncoder", err)
+	computePass := encoder.BeginComputePass(nil)
+	computePass.SetPipeline(pipeline)
+	computePass.SetBindGroup(0, bindGroup, nil)
+
+	workgroups := (numDestElements + workgroupSize - 1) / workgroupSize
+	computePass.DispatchWorkgroups(workgroups, 1, 1)
+	computePass.End()
+
+	cmdBuffer, err := encoder.Finish(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoder.Finish: %w", err)
+	}
+	b.queueCommand(cmdBuffer)
+
+	return b.createLazyResult(bufferResult, resultSize, dest.Shape(), tensor.Float32)
 }

@@ -20,6 +20,7 @@ func (r *Registry) registerMathOps() {
 	r.Register("Exp", handleExp)
 	r.Register("Log", handleLog)
 	r.Register("Sum", handleSum)
+	r.Register("Erf", handleErf)
 }
 
 func handleAdd(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
@@ -58,7 +59,14 @@ func handleMatMul(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.
 	if len(inputs) != 2 {
 		return nil, fmt.Errorf("matMul requires 2 inputs, got %d", len(inputs))
 	}
-	result := ctx.Backend.MatMul(inputs[0], inputs[1])
+	a, b := inputs[0], inputs[1]
+
+	var result *tensor.RawTensor
+	if len(a.Shape()) <= 2 && len(b.Shape()) <= 2 {
+		result = ctx.Backend.MatMul(inputs[0], inputs[1])
+	} else {
+		result = ctx.Backend.BatchMatMul(inputs[0], inputs[1])
+	}
 	return []*tensor.RawTensor{result}, nil
 }
 
@@ -137,5 +145,13 @@ func handleSum(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.Raw
 	for i := 1; i < len(inputs); i++ {
 		result = ctx.Backend.Add(result, inputs[i])
 	}
+	return []*tensor.RawTensor{result}, nil
+}
+
+func handleErf(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("erf requires 1 input, got %d", len(inputs))
+	}
+	result := ctx.Backend.Erf(inputs[0])
 	return []*tensor.RawTensor{result}, nil
 }

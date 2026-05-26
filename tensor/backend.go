@@ -59,12 +59,16 @@ type Backend interface {
 	DivScalar(x *RawTensor, scalar any) *RawTensor // Divide by scalar.
 
 	// Math operations (element-wise).
-	Exp(x *RawTensor) *RawTensor   // Exponential.
-	Log(x *RawTensor) *RawTensor   // Natural logarithm.
-	Sqrt(x *RawTensor) *RawTensor  // Square root.
-	Rsqrt(x *RawTensor) *RawTensor // Reciprocal square root (1/sqrt(x)).
-	Cos(x *RawTensor) *RawTensor   // Cosine.
-	Sin(x *RawTensor) *RawTensor   // Sine.
+	Exp(x *RawTensor) *RawTensor                           // Exponential.
+	Log(x *RawTensor) *RawTensor                           // Natural logarithm.
+	Sqrt(x *RawTensor) *RawTensor                          // Square root.
+	Rsqrt(x *RawTensor) *RawTensor                         // Reciprocal square root (1/sqrt(x)).
+	Cos(x *RawTensor) *RawTensor                           // Cosine.
+	Sin(x *RawTensor) *RawTensor                           // Sine.
+	Erf(x *RawTensor) *RawTensor                           // Error function (erf).
+	Sign(x *RawTensor) *RawTensor                          // Sign function.
+	Abs(x *RawTensor) *RawTensor                           // Absolute value.
+	Clamp(x *RawTensor, minBound, maxBound any) *RawTensor // Clamp values to [min, max].
 
 	// Activation functions.
 	Softmax(x *RawTensor, dim int) *RawTensor // Softmax along dimension.
@@ -95,9 +99,11 @@ type Backend interface {
 	Squeeze(x *RawTensor, dim int) *RawTensor     // Remove dimension of size 1.
 
 	// Indexing operations.
-	Gather(x *RawTensor, dim int, index *RawTensor) *RawTensor // Select elements along dim using index tensor.
-	Where(condition, x, y *RawTensor) *RawTensor               // Conditional element selection.
-	Embedding(weight, indices *RawTensor) *RawTensor           // Lookup embeddings by indices.
+	Gather(x *RawTensor, dim int, index *RawTensor) *RawTensor                          // Select elements along dim using index tensor.
+	Where(condition, x, y *RawTensor) *RawTensor                                        // Conditional element selection.
+	Embedding(weight, indices *RawTensor) *RawTensor                                    // Lookup embeddings by indices.
+	SelectAdd(dest *RawTensor, dim int, indices *RawTensor, src *RawTensor) *RawTensor  // Scatter-add (1-D indices): dest[indices[i], ...] += src[i, ...].
+	ScatterAdd(dest *RawTensor, dim int, indices *RawTensor, src *RawTensor) *RawTensor // Scatter-add (N-D indices, Gather backward): dest[..., indices[...], ...] += src[...].
 
 	// Shape operations (broadcast).
 	Expand(x *RawTensor, shape Shape) *RawTensor // Broadcast to shape.

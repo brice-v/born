@@ -9,6 +9,9 @@ import (
 
 // TestLazyModeAdd tests that lazy mode doesn't call readBuffer during Add.
 func TestLazyModeAdd(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -70,6 +73,9 @@ func TestLazyModeAdd(t *testing.T) {
 
 // TestLazyModeChain tests chaining multiple lazy operations.
 func TestLazyModeChain(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -126,6 +132,9 @@ func TestLazyModeChain(t *testing.T) {
 
 // TestEagerModeAdd tests that eager mode calls readBuffer immediately.
 func TestEagerModeAdd(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
